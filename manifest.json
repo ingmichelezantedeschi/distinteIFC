@@ -1,9 +1,9 @@
 {
   "title": "Distinta acciaio",
   "description": "Distinte per profilo, report con grafici e divisione degli elementi in assemblati e sciolti.",
-  "url": "https://TUO-UTENTE.github.io/NOME-REPOSITORY/index.html",
-  "icon": "https://TUO-UTENTE.github.io/NOME-REPOSITORY/icon.png",
-  "infoUrl": "https://TUO-UTENTE.github.io/NOME-REPOSITORY/demo/",
+  "url": "https://ingmichelezantedeschi.github.io/distinteIFC/index.html",
+  "icon": "https://ingmichelezantedeschi.github.io/distinteIFC/icon.png",
+  "infoUrl": "https://ingmichelezantedeschi.github.io/distinteIFC/demo/",
   "extensionType": ["3dviewer"],
   "enabled": true
 }
