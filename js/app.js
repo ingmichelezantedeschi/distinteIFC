@@ -20,8 +20,10 @@
   let API = null, PROJECT = { id: 'locale', name: '' }, DATA = null, R = null, INDEX = new Map(), W = null;
   let SEL = [], selSeq = 0, colorOn = store.get('tcsteel-color', true), bomView = 'prof', bomQ = '', tab = 'sum';
   let S = { ...IFC.DEFAULTS, excluded: [], unPolicy: 'U', touchTol: 5, ...store.get('tcsteel-settings', {}) };
-  let ASSIGN = {};
+  let ASSIGN = {}, SAVED_AT = 0, UNDO = [];
   const aKey = () => 'tcsteel-assign|' + PROJECT.id;
+  const SAVE = { local: null, localErr: false, proj: null, projErr: '', projBusy: false, projOn: false };
+  if (S.hideAfter === undefined) S.hideAfter = true;
 
   /* ------------------------------------------------------------ stato e avvisi */
   const setStatus = (t, err) => { const s = $('#status'); s.textContent = t || ''; s.classList.toggle('err', !!err); };
@@ -50,12 +52,14 @@
       return;
     }
     try { const p = await API.project.getProject(); if (p && p.id) PROJECT = p; } catch (e) {}
-    ASSIGN = store.get(aKey(), {});
+    loadLocal();
     $('#reloadBtn').disabled = false;
     await loadData();
+    projConnect(false);
   }
   function onEvent(event, args) {
     if (event === 'viewer.onSelectionChanged') onSelection(args && args.data);
+    else if (event === 'extension.accessToken') ProjStore.setToken(args && args.data);
     else if (event === 'viewer.onModelStateChanged') banner('stale', 'warn', 'I modelli caricati sono cambiati. <button class="btn sm" id="bnReload">Aggiorna la distinta</button>'), setTimeout(() => { const b = $('#bnReload'); if (b) b.onclick = loadData; });
     else if (event === 'viewer.onModelReset') { if (colorOn) setTimeout(colorAll, 500); }
   }
@@ -124,7 +128,7 @@
       <tbody>${rows.map((r, i) => `<tr ${rowAttr ? rowAttr(r, i) : ''}>${cols.map(c => `<td class="${c.r ? 'r num' : ''}">${c.f(r)}</td>`).join('')}</tr>`).join('')}</tbody>
       ${foot ? `<tfoot><tr>${cols.map((c, i) => `<td class="${c.r ? 'r num' : ''}">${foot[i] ?? ''}</td>`).join('')}</tr></tfoot>` : ''}</table>`;
   }
-  function renderAll() { renderHead(); renderSum(); renderBom(); renderWork(); renderSel(); }
+  function renderAll() { renderHead(); renderSum(); renderBom(); renderWork(); renderSel(); renderUndo(); renderSave(); }
 
   function renderHead() {
     $('#totKg').innerHTML = `${f0(R.total)}<small>kg</small>`;
@@ -237,12 +241,110 @@
   }
   async function assign(g) {
     if (!SEL.length) return;
-    for (const r of SEL) { if (g === 'U') delete ASSIGN[key(r)]; else ASSIGN[key(r)] = g; }
-    store.set(aKey(), ASSIGN);
-    computeWork(); renderWork(); renderSel();
+    const rows = SEL.slice(), hide = S.hideAfter && g !== 'U';
+    UNDO.push({ g, hide, items: rows.map(r => ({ r, prev: ASSIGN[key(r)] || null })) });
+    if (UNDO.length > 100) UNDO.shift();
+    for (const r of rows) { if (g === 'U') delete ASSIGN[key(r)]; else ASSIGN[key(r)] = g; }
+    changed();
+    computeWork(); renderWork(); renderSel(); renderUndo();
     $('#selMsg').textContent = g === 'U' ? `Tolta l’assegnazione a ${f0(SEL.length)} elementi.` : `${f0(SEL.length)} ${SEL.length === 1 ? 'elemento assegnato' : 'elementi assegnati'} al gruppo «${GLABEL[g]}».`;
-    if (colorOn) await colorGroups(SEL);
+    if (colorOn) await colorGroups(rows);
+    if (hide) {
+      const sel = TCData.selector(rows);
+      try { await API.viewer.setObjectState(sel, { visible: false }); await API.viewer.setSelection(sel, 'remove'); } catch (e) { console.warn(e); }
+      SEL = []; renderSel();
+      $('#selMsg').textContent += ' Nascosti nel modello: «Mostra tutto» li fa ricomparire, «Annulla» li riporta com’erano.';
+    }
   }
+  async function undo() {
+    const u = UNDO.pop(); if (!u) return;
+    for (const it of u.items) { if (it.prev) ASSIGN[key(it.r)] = it.prev; else delete ASSIGN[key(it.r)]; }
+    changed();
+    computeWork(); renderWork(); renderUndo();
+    const rows = u.items.map(it => it.r), sel = TCData.selector(rows);
+    try {
+      if (u.hide) await API.viewer.setObjectState(sel, { visible: true });
+      if (colorOn) await colorGroups(rows); else await API.viewer.setObjectState(sel, { color: 'reset' });
+      await API.viewer.setSelection(sel, 'set');
+    } catch (e) { console.warn(e); }
+    $('#selMsg').textContent = `Annullata l’assegnazione di ${f0(rows.length)} ${rows.length === 1 ? 'elemento' : 'elementi'}: sono di nuovo selezionati nel modello.`;
+  }
+  function renderUndo() {
+    const b = $('#undoBtn'); b.disabled = !UNDO.length;
+    b.textContent = UNDO.length ? `↶ Annulla (${UNDO.length})` : '↶ Annulla';
+  }
+  $('#undoBtn').addEventListener('click', undo);
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'z' || e.key === 'Z') && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { e.preventDefault(); undo(); }
+  });
+  $('#hideAfter').checked = !!S.hideAfter;
+  $('#hideAfter').addEventListener('change', e => { S.hideAfter = e.target.checked; store.set('tcsteel-settings', S); });
+  $('#hideAssigned').addEventListener('click', async () => {
+    const rows = R.rows.filter(r => grpOf(r) !== 'U'); if (!rows.length) return;
+    try { await API.viewer.setObjectState(TCData.selector(rows), { visible: false }); } catch (e) {}
+    $('#selMsg').textContent = `Nascosti ${f0(rows.length)} elementi già assegnati.`;
+  });
+
+  /* ------------------------------------------------------------ salvataggio */
+  function loadLocal() {
+    const v = store.get(aKey(), {});
+    if (v && v.v === 2) { ASSIGN = v.assign || {}; SAVED_AT = v.savedAt || 0; } else { ASSIGN = v || {}; SAVED_AT = 0; }
+  }
+  const payload = () => ({ v: 2, app: 'Distinta acciaio', project: PROJECT.name || PROJECT.id, projectId: PROJECT.id, savedAt: SAVED_AT, assign: ASSIGN });
+  let projTimer = null;
+  function changed() {
+    SAVED_AT = Date.now();
+    try { localStorage.setItem(aKey(), JSON.stringify(payload())); SAVE.local = new Date(); SAVE.localErr = false; } catch (e) { SAVE.localErr = true; }
+    if (SAVE.projOn) { clearTimeout(projTimer); projTimer = setTimeout(projSave, 8000); SAVE.projPending = true; }
+    renderSave();
+  }
+  async function projSave() {
+    if (!SAVE.projOn || SAVE.projBusy) { if (SAVE.projBusy) { clearTimeout(projTimer); projTimer = setTimeout(projSave, 3000); } return; }
+    SAVE.projBusy = true; renderSave();
+    try { await ProjStore.save(payload()); SAVE.proj = new Date(); SAVE.projErr = ''; SAVE.projPending = false; }
+    catch (e) { SAVE.projErr = e.message || String(e); console.warn(e); }
+    SAVE.projBusy = false; renderSave();
+  }
+  async function projConnect(manual) {
+    SAVE.projBusy = true; SAVE.projErr = ''; SAVE.projFail = false; renderSave();
+    try {
+      await ProjStore.connect(API, PROJECT);
+      const remote = await ProjStore.load();
+      SAVE.projOn = true; store.set('tcsteel-proj|' + PROJECT.id, true);
+      const rAt = remote && remote.savedAt || 0;
+      if (remote && remote.assign && rAt > SAVED_AT) {
+        ASSIGN = remote.assign; SAVED_AT = rAt;
+        try { localStorage.setItem(aKey(), JSON.stringify(payload())); } catch (e) {}
+        UNDO = []; renderUndo();
+        if (R) { computeWork(); renderWork(); renderSel(); if (colorOn) colorAll(); }
+        $('#selMsg').textContent = `Caricate dal progetto ${f0(Object.keys(ASSIGN).length)} assegnazioni (salvate il ${new Date(rAt).toLocaleString('it-IT')}).`;
+        SAVE.proj = new Date(rAt);
+      } else if (!remote || rAt < SAVED_AT) {
+        SAVE.projBusy = false; await projSave();
+      } else SAVE.proj = new Date(rAt);
+    } catch (e) {
+      SAVE.projErr = e.message || String(e); SAVE.projOn = false; SAVE.projFail = true; console.warn(e);
+      if (manual) $('#projInfo').textContent = 'Non è stato possibile collegarsi al progetto: ' + SAVE.projErr + '. Le assegnazioni restano salvate in questo browser; per condividerle usa «Esporta assegnazioni».';
+    }
+    SAVE.projBusy = false; renderSave();
+  }
+  function renderSave() {
+    const t = d => d ? d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) : '';
+    const n = Object.keys(ASSIGN).length;
+    const loc = SAVE.localErr ? '<span class="err">nel browser: non riuscito (archiviazione bloccata)</span>' : `nel browser <span class="ok">✓</span>${SAVE.local ? ' ' + t(SAVE.local) : ''}`;
+    let pr = '';
+    if (SAVE.projBusy) pr = ' · nel progetto: salvataggio…';
+    else if (SAVE.projOn && SAVE.projErr) pr = ` · <span class="err">nel progetto: non riuscito (${esc(SAVE.projErr)})</span> <button class="btn sm" id="projRetry">Riprova</button>`;
+    else if (!SAVE.projOn && SAVE.projFail) pr = ` · <span class="err">nel progetto: non disponibile (${esc(SAVE.projErr)})</span> <button class="btn sm" id="projRetry2">Riprova</button>`;
+    else if (SAVE.projOn) pr = SAVE.projPending ? ' · nel progetto: tra pochi secondi' : ` · nel progetto <span class="ok">✓</span>${SAVE.proj ? ' ' + t(SAVE.proj) : ''}`;
+    $('#saveInfo').innerHTML = `${f0(n)} assegnazioni salvate: ${loc}${pr}`;
+    const rb = $('#projRetry'); if (rb) rb.onclick = () => projSave();
+    const rb2 = $('#projRetry2'); if (rb2) rb2.onclick = () => projConnect(true);
+    const pb = $('#projBtn');
+    pb.textContent = SAVE.projOn ? 'Salva ora nel progetto' : 'Salva anche nel progetto';
+    if (SAVE.projOn) $('#projInfo').textContent = `Salvate nel progetto, cartella principale, file «${ProjStore.FILE}». Si aggiorna da solo pochi secondi dopo ogni modifica.`;
+  }
+  $('#projBtn').addEventListener('click', () => SAVE.projOn ? projSave() : projConnect(true));
   $('#toA').addEventListener('click', () => assign('A'));
   $('#toS').addEventListener('click', () => assign('S'));
   $('#toU').addEventListener('click', () => assign('U'));
@@ -288,15 +390,15 @@
 
   /* ------------------------------------------------------------ assegnazioni: esporta / importa */
   $('#expAssign').addEventListener('click', () => {
-    const data = { app: 'Distinta acciaio', project: PROJECT.name || PROJECT.id, projectId: PROJECT.id, date: new Date().toISOString(), assignments: ASSIGN };
+    const data = { ...payload(), date: new Date().toISOString(), assignments: ASSIGN };
     save(`Assegnazioni ${PROJECT.name || 'progetto'}.json`, new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' }));
   });
   $('#impAssign').addEventListener('click', () => $('#impFile').click());
   $('#impFile').addEventListener('change', async e => {
     const f = e.target.files[0]; e.target.value = ''; if (!f) return;
-    try { const j = JSON.parse(await f.text()); const a = j.assignments || j; let n = 0;
+    try { const j = JSON.parse(await f.text()); const a = j.assignments || j.assign || j; let n = 0;
       for (const k in a) if (a[k] === 'A' || a[k] === 'S') { ASSIGN[k] = a[k]; n++; }
-      store.set(aKey(), ASSIGN); computeWork(); renderWork(); renderSel(); if (colorOn) colorAll();
+      changed(); UNDO = []; renderUndo(); computeWork(); renderWork(); renderSel(); if (colorOn) colorAll();
       $('#assignInfo').textContent = `Importate ${f0(n)} assegnazioni.`;
     } catch (err) { $('#assignInfo').textContent = 'File non valido: ' + err.message; }
   });
@@ -306,7 +408,7 @@
     if (!Object.keys(ASSIGN).length) return;
     if (!clrArm) { b.textContent = 'Conferma: cancella tutte'; clrArm = setTimeout(() => { clrArm = null; b.textContent = 'Cancella tutte'; }, 4000); return; }
     clearTimeout(clrArm); clrArm = null; b.textContent = 'Cancella tutte';
-    ASSIGN = {}; store.set(aKey(), ASSIGN); computeWork(); renderWork(); renderSel(); if (colorOn) colorAll();
+    ASSIGN = {}; UNDO = []; renderUndo(); changed(); computeWork(); renderWork(); renderSel(); if (colorOn) colorAll();
   });
 
   /* ------------------------------------------------------------ impostazioni */

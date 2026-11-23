@@ -82,7 +82,7 @@ iframe{flex:1;border:0;width:100%}
 
   WS.expose({
     project: { getProject: async () => ({ id: 'demo-project', name: 'Progetto di prova', location: 'europe' }), getCurrentProject: async () => ({ id: 'demo-project', name: 'Progetto di prova' }) },
-    extension: { requestPermission: async () => 'denied', setStatusMessage: async () => true, getHost: async () => ({ name: '3dviewer' }) },
+    extension: { requestPermission: async () => new URLSearchParams(location.search).has('token') ? 'tok-' + 'x'.repeat(60) : 'denied', setStatusMessage: async () => true, getHost: async () => ({ name: '3dviewer' }) },
     viewer: {
       getModels: async () => [{ ...MODEL, isLatestVersion: true, state: 'loaded', type: 'ifc' }],
       getObjects: async () => [{ modelId: MODEL.id, objects: OBJ.map(o => ({ id: o.id, class: o.cls })) }],

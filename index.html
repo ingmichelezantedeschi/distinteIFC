@@ -96,6 +96,8 @@ details.set summary{cursor:pointer;padding:7px 10px;font-weight:600}
 .setg label{display:block;font-size:12px;color:var(--muted)}
 .setg input,.setg select{width:100%;border:1px solid var(--line);border-radius:4px;padding:4px 6px}
 .setg .full{grid-column:1/-1}
+.saveinfo{font-size:11px;color:var(--muted);margin-top:4px;border-top:1px solid var(--line);padding-top:5px}
+.saveinfo .ok{color:var(--ok)}.saveinfo .err{color:var(--warn)}
 .msg{font-size:12px;margin-top:6px;min-height:1.3em;color:var(--muted)}
 .empty{padding:16px 4px;color:var(--muted)}
 .notin{padding:18px;max-width:560px}
@@ -178,18 +180,24 @@ details.set summary{cursor:pointer;padding:7px 10px;font-weight:600}
           <button class="btn big sci" id="toS" disabled>Sciolti</button>
           <button class="btn" id="toU" disabled title="Toglie l'assegnazione">Togli</button>
         </div>
+        <div class="tools" style="margin:8px 0 0;justify-content:space-between">
+          <label class="hint" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="hideAfter"> Nascondi dopo l’assegnazione</label>
+          <button class="btn sm" id="undoBtn" disabled title="Annulla l’ultima assegnazione (Ctrl+Z)">↶ Annulla</button>
+        </div>
         <div class="tools" style="margin:8px 0 0">
           <span class="hint">Aggiungi alla selezione:</span>
           <button class="btn sm" id="addTouch" disabled title="Piastre il cui ingombro tocca gli elementi selezionati">piastre a contatto</button>
           <button class="btn sm" id="addSame" disabled>stesso profilo</button>
         </div>
         <div class="msg" id="selMsg"></div>
+        <div class="saveinfo" id="saveInfo"></div>
       </div>
 
       <div class="groups" id="groups"></div>
 
       <div class="tools" style="margin-top:10px">
         <button class="btn sm" id="colorBtn" aria-pressed="false">Colora i gruppi nel modello</button>
+        <button class="btn sm" id="hideAssigned" title="Nasconde nel modello tutti gli elementi già assegnati">Nascondi assegnati</button>
         <button class="btn sm" id="showAll">Mostra tutto</button>
       </div>
 
@@ -202,6 +210,9 @@ details.set summary{cursor:pointer;padding:7px 10px;font-weight:600}
           <div class="full"><label for="unPolicy">Nel totale, gli elementi non assegnati contano come</label>
             <select id="unPolicy"><option value="U">Da assegnare (a parte)</option><option value="S">Sciolti</option><option value="A">Assemblati</option></select></div>
           <div class="full"><label for="touchTol">Tolleranza di contatto per «piastre a contatto» (mm)</label><input type="number" id="touchTol" min="0" step="1"></div>
+          <div class="full"><label>Salvataggio nel progetto Trimble Connect</label>
+            <div class="hint" id="projInfo" style="margin:2px 0 6px">Le assegnazioni vengono salvate in questo browser. Salvandole anche nel progetto, nella cartella principale, le trovi su qualsiasi computer e le vedono anche i colleghi.</div>
+            <button class="btn sm pri" id="projBtn">Salva anche nel progetto</button></div>
           <div class="full tools" style="margin:0">
             <button class="btn sm" id="expAssign">Esporta assegnazioni</button>
             <button class="btn sm" id="impAssign">Importa assegnazioni</button>
@@ -246,6 +257,7 @@ details.set summary{cursor:pointer;padding:7px 10px;font-weight:600}
 
 <script src="js/core.js"></script>
 <script src="js/tcdata.js"></script>
+<script src="js/projstore.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

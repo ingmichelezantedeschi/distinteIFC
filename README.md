@@ -54,11 +54,15 @@ Serve essere **amministratore del progetto**.
   - in «Opzioni e assegnazioni» scegli come contare i non assegnati, e puoi esportare, importare o cancellare le assegnazioni.
 - **Report**: PDF, Excel e CSV. Le immagini del modello usano l’inquadratura attuale del visualizzatore.
 
-### Dove vengono salvate le assegnazioni
+### Nascondere, annullare, salvare
 
-Le assegnazioni sono salvate **nel browser**, per progetto e per identificativo IFC (GUID). Restano valide anche quando carichi una nuova versione del modello.
-
-Per condividerle con un collega o passare a un altro computer usa **Esporta assegnazioni**: il collega le carica con **Importa assegnazioni**. Il file `.json` si può tenere anche tra i file del progetto Trimble Connect.
+- Con **«Nascondi dopo l’assegnazione»** attivo, ogni pezzo assegnato sparisce dal modello, così vedi cosa resta da fare. **Nascondi assegnati** nasconde tutti quelli già fatti, **Mostra tutto** li fa ricomparire.
+- **↶ Annulla** (oppure **Ctrl+Z** con il pannello attivo) annulla l’ultima assegnazione, fino a 100 passi. I pezzi ricompaiono e tornano selezionati nel modello.
+- Le assegnazioni si salvano da sole, dopo ogni modifica:
+  - **nel browser**;
+  - **nel progetto Trimble Connect**, come file `Distinta acciaio - assegnazioni.json` nella cartella principale. Al primo uso Trimble Connect chiede il permesso di accesso. Così le ritrovi su qualsiasi computer e le vedono anche i colleghi.
+- Le assegnazioni sono legate all’identificativo IFC (GUID), quindi restano valide anche con una nuova versione del modello.
+- **Esporta / Importa assegnazioni** resta disponibile come copia di sicurezza.
 
 ### Da dove arrivano i dati
 
