@@ -1,0 +1,9 @@
+{
+  "title": "Distinta acciaio",
+  "description": "Distinte per profilo, report con grafici e divisione degli elementi in assemblati e sciolti.",
+  "url": "https://TUO-UTENTE.github.io/NOME-REPOSITORY/index.html",
+  "icon": "https://TUO-UTENTE.github.io/NOME-REPOSITORY/icon.png",
+  "infoUrl": "https://TUO-UTENTE.github.io/NOME-REPOSITORY/demo/",
+  "extensionType": ["3dviewer"],
+  "enabled": true
+}

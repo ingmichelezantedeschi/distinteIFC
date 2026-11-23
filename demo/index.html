@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simulatore Trimble Connect</title>
+<script src="https://components.connect.trimble.com/trimble-connect-workspace-api/index.js"></script>
+<script src="../js/core.js"></script>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;font:14px/1.4 "Open Sans","Segoe UI",system-ui,sans-serif;color:#252A2E;background:#E9EAEE}
+.top{height:44px;display:flex;align-items:center;gap:12px;padding:0 12px;background:#0E416C;color:#fff}
+.top strong{font-weight:600}
+.top .note{opacity:.8;font-size:12px}
+.top label{margin-left:auto;cursor:pointer;background:#fff;color:#0E416C;border-radius:4px;padding:4px 10px;font-size:13px}
+.main{display:flex;height:calc(100% - 44px)}
+.viewer{flex:1;position:relative;min-width:0}
+canvas{display:block;width:100%;height:100%;background:#F7F8FA;cursor:pointer}
+.hud{position:absolute;left:10px;bottom:8px;font-size:12px;color:#6A6E79}
+.side{width:420px;border-left:1px solid #CBCDD6;background:#fff;display:flex;flex-direction:column}
+.side .ph{height:34px;display:flex;align-items:center;padding:0 10px;font-weight:600;border-bottom:1px solid #E0E1E6;font-size:13px}
+iframe{flex:1;border:0;width:100%}
+@media (max-width:800px){.side{width:340px}}
+</style>
+</head>
+<body>
+<div class="top"><strong>Simulatore del visualizzatore 3D</strong><span class="note">Prova l’estensione senza Trimble Connect. Clic per selezionare, Ctrl+clic per aggiungere, trascina per ruotare.</span>
+  <label>Carica un file IFC<input type="file" id="f" accept=".ifc" hidden></label></div>
+<div class="main">
+  <div class="viewer"><canvas id="cv"></canvas><div class="hud" id="hud">Caricamento del modello di esempio…</div></div>
+  <div class="side"><div class="ph">Estensioni › Distinta acciaio</div><iframe id="ext" title="Estensione"></iframe></div>
+</div>
+<script>
+(() => {
+  const WS = TrimbleConnectWorkspace, cv = document.getElementById('cv'), ctx = cv.getContext('2d'), frame = document.getElementById('ext');
+  let OBJ = [], BY = new Map(), MODEL = { id: 'demo-model-v1', versionId: 'demo-model-v1', name: 'esempio.ifc' };
+  const selection = new Set(), color = new Map(), hidden = new Set();
+  let az = 0.75, el = 0.55, zoom = 1, panX = 0, panY = 0;
+
+  function propsOf(e, kind) {
+    const ps = [];
+    const q = [];
+    if (e.weightDecl) q.push({ name: 'Weight', value: e.weightDecl, type: 3 });
+    const L = e.lengthProp || e.lengthGeo; if (L) q.push({ name: 'Length', value: Math.round(L * 1000), type: 0 });
+    if (e.volGeo) q.push({ name: 'Volume', value: e.volGeo, type: 2 });
+    if (q.length) ps.push({ name: 'Tekla Quantity', properties: q });
+    const c = [];
+    if (e.profile) c.push({ name: 'Profile', value: e.profile, type: 5 });
+    if (e.tag) c.push({ name: 'Part mark', value: e.tag, type: 5 });
+    if (e.material) c.push({ name: 'Material', value: e.material, type: 5 });
+    if (c.length) ps.push({ name: 'Tekla Common', properties: c });
+    return ps;
+  }
+  async function loadIfc(text, name) {
+    document.getElementById('hud').textContent = 'Lettura di ' + name + '…';
+    const M = new IFC.Model(text); await M.index(); const d = await IFC.extract(M);
+    MODEL = { id: 'demo-' + name, versionId: 'demo-' + name, name };
+    OBJ = [...d.elements, ...d.fasteners].filter(e => e.bbox).map(e => {
+      const b = e.bbox, o = { id: e.id, guid: e.guid, cls: 'IFC' + e.ifcType, e, bbox: b };
+      // aste inclinate: l'ingombro è una scatola grande e vuota, si disegnano come una linea
+      const ext = [b[3] - b[0], b[4] - b[1], b[5] - b[2]].sort((x, y) => y - x);
+      if (e.incl != null && ext[1] > 0.4 && ext[1] > ext[0] * 0.25 && e.ifcType !== 'PLATE') {
+        const c = [(b[0] + b[3]) / 2, (b[1] + b[4]) / 2, (b[2] + b[5]) / 2], L = (e.lengthM || ext[0]) / 2, i = e.incl * Math.PI / 180, a = e.azim * Math.PI / 180;
+        const u = [Math.cos(i) * Math.cos(a), Math.cos(i) * Math.sin(a), Math.sin(i)];
+        const sgn = [0, 1, 2].map(k => u[k] >= 0 ? 1 : -1);
+        const v = [0, 1, 2].map(k => Math.abs(u[k]) * ((b[k + 3] - b[k]) >= 0 ? 1 : 1));
+        // orienta la linea lungo la diagonale dell'ingombro più vicina all'asse
+        const best = [[1, 1, 1], [1, -1, 1], [1, 1, -1], [1, -1, -1]].map(sg => ({ sg, d: Math.abs(sg[0] * (b[3] - b[0]) * u[0] + sg[1] * (b[4] - b[1]) * u[1] + sg[2] * (b[5] - b[2]) * u[2]) })).sort((x, y) => y.d - x.d)[0].sg;
+        const h = [(b[3] - b[0]) / 2 * best[0], (b[4] - b[1]) / 2 * best[1], (b[5] - b[2]) / 2 * best[2]];
+        o.line = [[c[0] - h[0], c[1] - h[1], c[2] - h[2]], [c[0] + h[0], c[1] + h[1], c[2] + h[2]]];
+      }
+      return o; });
+    BY = new Map(OBJ.map(o => [o.id, o]));
+    selection.clear(); color.clear(); hidden.clear(); panX = panY = 0; zoom = 1;
+    document.getElementById('hud').textContent = `${name}: ${OBJ.length} oggetti`;
+    draw();
+    frame.src = '../index.html?v=' + Date.now();
+  }
+  const sendSel = () => WS.sendEvent(frame.contentWindow, '*', 'viewer.onSelectionChanged', { data: selection.size ? [{ modelId: MODEL.id, objectRuntimeIds: [...selection] }] : [] });
+  const idsOf = sel => { if (!sel || !sel.modelObjectIds) return OBJ.map(o => o.id); const out = []; for (const m of sel.modelObjectIds) if (m.modelId === MODEL.id) out.push(...(m.objectRuntimeIds || OBJ.map(o => o.id))); return out; };
+  const hex = c => typeof c === 'string' ? c : `rgb(${c.r},${c.g},${c.b})`;
+
+  WS.expose({
+    project: { getProject: async () => ({ id: 'demo-project', name: 'Progetto di prova', location: 'europe' }), getCurrentProject: async () => ({ id: 'demo-project', name: 'Progetto di prova' }) },
+    extension: { requestPermission: async () => 'denied', setStatusMessage: async () => true, getHost: async () => ({ name: '3dviewer' }) },
+    viewer: {
+      getModels: async () => [{ ...MODEL, isLatestVersion: true, state: 'loaded', type: 'ifc' }],
+      getObjects: async () => [{ modelId: MODEL.id, objects: OBJ.map(o => ({ id: o.id, class: o.cls })) }],
+      getObjectProperties: async (modelId, ids) => ids.map(id => { const o = BY.get(id); if (!o) return null; const e = o.e;
+        return { id, class: o.cls, product: { name: e.name, objectType: e.objectType, description: e.description }, properties: propsOf(e) }; }).filter(Boolean),
+      getObjectBoundingBoxes: async (modelId, ids) => ids.map(id => { const o = BY.get(id); const b = o.bbox;
+        return { id, boundingBox: { isBox3: true, min: { x: b[0], y: b[1], z: b[2] }, max: { x: b[3], y: b[4], z: b[5] } } }; }),
+      convertToObjectIds: async (modelId, ids) => ids.map(id => { const o = BY.get(id); if (!o) throw new Error('not found'); return o.guid; }),
+      convertToObjectRuntimeIds: async (modelId, g) => g.map(x => (OBJ.find(o => o.guid === x) || {}).id),
+      getHierarchyChildren: async () => [],
+      getSelection: async () => selection.size ? [{ modelId: MODEL.id, objectRuntimeIds: [...selection] }] : [],
+      setSelection: async (sel, mode) => { const ids = idsOf(sel); if (mode === 'set') selection.clear(); for (const id of ids) mode === 'remove' ? selection.delete(id) : selection.add(id); draw(); sendSel(); },
+      setObjectState: async (sel, st) => { const ids = idsOf(sel);
+        if (st.color !== undefined) for (const id of ids) st.color === 'reset' ? color.delete(id) : color.set(id, hex(st.color));
+        if (st.visible !== undefined) for (const id of ids) (st.visible === false ? hidden.add(id) : hidden.delete(id));
+        draw(); },
+      setCamera: async () => {},
+      getSnapshot: async () => cv.toDataURL('image/png'),
+    }
+  });
+  window.addEventListener('message', WS.dispatcherEventListener);
+
+  /* ---- disegno isometrico degli ingombri ---- */
+  let proj = null;
+  function setupProj() {
+    const vis = OBJ.filter(o => !hidden.has(o.id)); const all = vis.length ? vis : OBJ;
+    const ca = Math.cos(az), sa = Math.sin(az), ce = Math.cos(el), se = Math.sin(el);
+    const P = (x, y, z) => { const u = x * ca - y * sa, v = x * sa + y * ca; return [u, -(v * se + z * ce), v * ce - z * se]; };
+    let mn = [Infinity, Infinity], mx = [-Infinity, -Infinity];
+    for (const o of all) { const b = o.bbox; for (const x of [b[0], b[3]]) for (const y of [b[1], b[4]]) for (const z of [b[2], b[5]]) { const p = P(x, y, z); mn = [Math.min(mn[0], p[0]), Math.min(mn[1], p[1])]; mx = [Math.max(mx[0], p[0]), Math.max(mx[1], p[1])]; } }
+    const W = cv.width, H = cv.height, s = Math.min(W / (mx[0] - mn[0] || 1), H / (mx[1] - mn[1] || 1)) * 0.88 * zoom;
+    const ox = W / 2 - (mn[0] + mx[0]) / 2 * s + panX, oy = H / 2 - (mn[1] + mx[1]) / 2 * s + panY;
+    proj = (x, y, z) => { const p = P(x, y, z); return [ox + p[0] * s, oy + p[1] * s, p[2]]; };
+  }
+  function faces(b) {
+    const c = [[b[0], b[1], b[2]], [b[3], b[1], b[2]], [b[3], b[4], b[2]], [b[0], b[4], b[2]], [b[0], b[1], b[5]], [b[3], b[1], b[5]], [b[3], b[4], b[5]], [b[0], b[4], b[5]]].map(p => proj(...p));
+    return [[[4, 5, 6, 7], 1], [[0, 1, 5, 4], .78], [[1, 2, 6, 5], .66], [[2, 3, 7, 6], .78], [[3, 0, 4, 7], .66], [[0, 3, 2, 1], .5]].map(([ix, sh]) => ({ pts: ix.map(i => c[i]), sh }));
+  }
+  function shade(col, k) { const c = col.match(/\w\w/g) ? col.replace('#', '').match(/\w\w/g).map(h => parseInt(h, 16)) : [180, 186, 190]; return `rgb(${c.map(v => Math.round(v * k)).join(',')})`; }
+  function draw() {
+    const r = cv.getBoundingClientRect(); cv.width = r.width * devicePixelRatio; cv.height = r.height * devicePixelRatio;
+    ctx.fillStyle = '#F7F8FA'; ctx.fillRect(0, 0, cv.width, cv.height);
+    if (!OBJ.length) return; setupProj();
+    const list = OBJ.filter(o => !hidden.has(o.id)).map(o => { const b = o.bbox; return { o, d: proj((b[0] + b[3]) / 2, (b[1] + b[4]) / 2, (b[2] + b[5]) / 2)[2] }; }).sort((a, b) => b.d - a.d);
+    for (const { o } of list) {
+      const base = selection.has(o.id) ? '#00C2A8' : (color.get(o.id) || '#B8BEC4');
+      if (o.line) { const [p0, p1] = o.line.map(q => proj(...q)); ctx.beginPath(); ctx.moveTo(p0[0], p0[1]); ctx.lineTo(p1[0], p1[1]);
+        ctx.strokeStyle = shade(base, 0.85); ctx.lineWidth = 3 * devicePixelRatio; ctx.stroke(); continue; }
+      for (const f of faces(o.bbox)) { const p = f.pts; const area = (p[1][0] - p[0][0]) * (p[2][1] - p[0][1]) - (p[2][0] - p[0][0]) * (p[1][1] - p[0][1]); if (area <= 0) continue;
+        ctx.beginPath(); p.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.closePath();
+        ctx.fillStyle = shade(base.startsWith('#') ? base : '#B8BEC4', f.sh); ctx.fill(); ctx.strokeStyle = 'rgba(0,0,0,.18)'; ctx.lineWidth = 1; ctx.stroke(); }
+    }
+  }
+  function pick(px, py) {
+    setupProj(); let best = null;
+    for (const o of OBJ) { if (hidden.has(o.id)) continue;
+      if (o.line) { const [p0, p1] = o.line.map(q => proj(...q)); const dx = p1[0] - p0[0], dy = p1[1] - p0[1], l2 = dx * dx + dy * dy || 1;
+        const t = Math.max(0, Math.min(1, ((px - p0[0]) * dx + (py - p0[1]) * dy) / l2)), qx = p0[0] + t * dx, qy = p0[1] + t * dy;
+        if (Math.hypot(px - qx, py - qy) < 6 * devicePixelRatio) { const d = p0[2] + t * (p1[2] - p0[2]); if (!best || d < best.d) best = { o, d }; } continue; }
+      for (const f of faces(o.bbox)) { const p = f.pts; let inside = false;
+        for (let i = 0, j = p.length - 1; i < p.length; j = i++) { if ((p[i][1] > py) !== (p[j][1] > py) && px < (p[j][0] - p[i][0]) * (py - p[i][1]) / (p[j][1] - p[i][1]) + p[i][0]) inside = !inside; }
+        if (inside) { const b = o.bbox, d = proj((b[0] + b[3]) / 2, (b[1] + b[4]) / 2, (b[2] + b[5]) / 2)[2]; if (!best || d < best.d) best = { o, d }; break; } } }
+    return best && best.o;
+  }
+  let drag = null;
+  cv.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY, m: 0, pan: e.button === 2 || e.shiftKey }; cv.setPointerCapture(e.pointerId); });
+  cv.addEventListener('pointermove', e => { if (!drag) return; const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.x = e.clientX; drag.y = e.clientY; drag.m += Math.abs(dx) + Math.abs(dy);
+    if (drag.pan) { panX += dx * devicePixelRatio; panY += dy * devicePixelRatio; } else { az += dx * 0.01; el = Math.max(0.05, Math.min(1.5, el + dy * 0.01)); } draw(); });
+  cv.addEventListener('pointerup', e => { if (!drag) return; const moved = drag.m; drag = null; if (moved > 4) return;
+    const r = cv.getBoundingClientRect(), o = pick((e.clientX - r.left) * devicePixelRatio, (e.clientY - r.top) * devicePixelRatio);
+    if (!(e.ctrlKey || e.metaKey)) selection.clear();
+    if (o) (selection.has(o.id) && (e.ctrlKey || e.metaKey)) ? selection.delete(o.id) : selection.add(o.id);
+    draw(); sendSel(); });
+  cv.addEventListener('contextmenu', e => e.preventDefault());
+  cv.addEventListener('wheel', e => { e.preventDefault(); zoom = Math.max(0.3, Math.min(30, zoom * Math.exp(-e.deltaY * 0.0015))); draw(); }, { passive: false });
+  addEventListener('resize', draw);
+  document.getElementById('f').addEventListener('change', async e => { const f = e.target.files[0]; if (f) loadIfc(await f.text(), f.name); });
+  fetch('esempio.ifc').then(r => r.text()).then(t => loadIfc(t, 'esempio.ifc')).catch(() => { document.getElementById('hud').textContent = 'Carica un file IFC per iniziare.'; });
+  window.__demo = { selection, color, hidden, get OBJ() { return OBJ; }, pick, draw, sendSel };
+})();
+</script>
+</body>
+</html>

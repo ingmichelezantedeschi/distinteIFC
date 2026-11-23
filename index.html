@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Distinta acciaio</title>
+<script src="https://components.connect.trimble.com/trimble-connect-workspace-api/index.js"></script>
+<script src="vendor/chart.umd.js"></script>
+<script src="vendor/xlsx.full.min.js"></script>
+<script src="vendor/jspdf.umd.min.js"></script>
+<script src="vendor/jspdf.plugin.autotable.min.js"></script>
+<style>
+:root{
+  --bg:#FFFFFF; --soft:#F1F1F6; --line:#D7D9E0; --ink:#252A2E; --muted:#6A6E79; --pri:#0063A3; --pri-ink:#FFFFFF;
+  --asm:#D2552D; --asm-soft:#FBE7E0; --sci:#3A87C8; --sci-soft:#E1EEF8; --una:#AEB4BA; --una-soft:#EEF0F2;
+  --c-light:#93AECB; --c-heavy:#3D6995; --c-vheavy:#14314E; --c-plate:#B5862A; --c-weld:#86475A; --c-nd:#A3A8A3;
+  --warn:#9A5B12; --warn-bg:#FBF0DD; --ok-bg:#E3F1E7; --ok:#24603A;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 "Open Sans","Segoe UI",system-ui,-apple-system,Roboto,sans-serif}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--pri);outline-offset:1px}
+.num{font-variant-numeric:tabular-nums}
+.hidden{display:none!important}
+.wrap{padding:12px 12px 40px}
+header{display:flex;align-items:flex-start;gap:8px;justify-content:space-between}
+header h1{font-size:16px;margin:0;font-weight:600}
+header .sub{color:var(--muted);font-size:12px;overflow-wrap:anywhere}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);background:var(--bg);border-radius:4px;padding:5px 10px;cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--muted)}
+.btn.pri{background:var(--pri);border-color:var(--pri);color:var(--pri-ink)}
+.btn:disabled{opacity:.45;cursor:default}
+.btn.sm{padding:3px 8px;font-size:12px}
+.btn.asm{background:var(--asm);border-color:var(--asm);color:#fff}
+.btn.sci{background:var(--sci);border-color:var(--sci);color:#fff}
+.btn.big{padding:9px 10px;font-weight:600;flex:1}
+.btn[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:#fff}
+.progress{height:3px;background:var(--soft);margin-top:10px;display:none}
+.progress i{display:block;height:100%;width:0;background:var(--pri)}
+.status{color:var(--muted);font-size:12px;margin-top:6px;min-height:1.4em}
+.status.err{color:var(--warn)}
+.banner{margin-top:10px;padding:8px 10px;border-radius:4px;font-size:13px}
+.banner.warn{background:var(--warn-bg);color:var(--ink)}
+.banner.fix{background:var(--ok-bg)}
+.total{margin-top:10px;border:1px solid var(--line);border-radius:6px;padding:10px 12px}
+.total .k{font-size:12px;color:var(--muted)}
+.total .v{font-size:28px;font-weight:700;line-height:1.1}
+.total .v small{font-size:14px;font-weight:600;color:var(--muted);margin-left:4px}
+.total .row{display:flex;justify-content:space-between;align-items:flex-end;gap:8px;flex-wrap:wrap}
+.split{display:flex;height:8px;border-radius:4px;overflow:hidden;margin-top:8px;background:var(--soft)}
+.split span{display:block;height:100%}
+.leg{display:flex;flex-wrap:wrap;gap:2px 12px;margin-top:6px;font-size:12px;color:var(--muted)}
+.sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+nav.tabs{display:flex;gap:2px;margin-top:12px;border-bottom:1px solid var(--line);overflow-x:auto}
+nav.tabs button{border:0;background:none;padding:7px 7px;font-size:13px;cursor:pointer;color:var(--muted);border-bottom:3px solid transparent;margin-bottom:-1px;font-weight:600;white-space:nowrap}
+nav.tabs button[aria-selected="true"]{color:var(--pri);border-bottom-color:var(--pri)}
+.pane{display:none;padding-top:10px}.pane.on{display:block}
+h2{font-size:13px;margin:14px 0 6px;font-weight:600;color:var(--ink)}
+h2:first-child{margin-top:2px}
+.hint{color:var(--muted);font-size:12px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:5px 6px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{font-size:12px;color:var(--muted);font-weight:600;position:sticky;top:0;background:var(--bg)}
+td.r,th.r{text-align:right}
+tfoot td{font-weight:600;border-top:2px solid var(--ink);border-bottom:0}
+tbody tr.click{cursor:pointer}
+tbody tr.click:hover{background:var(--soft)}
+tbody tr.sel{background:#E5F0FA}
+.tscroll{overflow-x:auto}
+.chip i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}
+.cbox{position:relative;height:210px;margin:6px 0}
+.tools{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:6px 0}
+.tools input[type=search]{flex:1;min-width:120px;border:1px solid var(--line);border-radius:4px;padding:5px 8px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:4px;overflow:hidden}
+.seg button{border:0;background:var(--bg);padding:4px 8px;cursor:pointer;font-size:12px}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:#fff}
+.selbox{border:1px solid var(--line);border-radius:6px;padding:10px;background:var(--soft)}
+.selbox .what{font-size:13px;min-height:2.6em}
+.selbox .what strong{font-size:15px}
+.assign{display:flex;gap:6px;margin-top:8px}
+.groups{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:10px}
+.grp{border-radius:6px;padding:7px 8px;min-width:0}
+.grp .k{font-size:12px;font-weight:600}
+.grp .v{font-size:17px;font-weight:700;line-height:1.2}
+.grp .s{font-size:11px;color:var(--muted)}
+.grp.a{background:var(--asm-soft)} .grp.a .k{color:var(--asm)}
+.grp.s{background:var(--sci-soft)} .grp.s .k{color:var(--sci)}
+.grp.u{background:var(--una-soft)} .grp.u .k{color:#555}
+.grp .s .nb{display:none}
+.grp .acts{display:flex;gap:4px;margin-top:5px;flex-wrap:wrap}
+.grp .acts .btn{padding:2px 6px;font-size:11px}
+details.set{margin-top:12px;border:1px solid var(--line);border-radius:6px}
+details.set summary{cursor:pointer;padding:7px 10px;font-weight:600}
+.setg{display:grid;grid-template-columns:1fr 1fr;gap:8px 10px;padding:0 10px 10px}
+.setg label{display:block;font-size:12px;color:var(--muted)}
+.setg input,.setg select{width:100%;border:1px solid var(--line);border-radius:4px;padding:4px 6px}
+.setg .full{grid-column:1/-1}
+.msg{font-size:12px;margin-top:6px;min-height:1.3em;color:var(--muted)}
+.empty{padding:16px 4px;color:var(--muted)}
+.notin{padding:18px;max-width:560px}
+.notin h1{font-size:18px}
+.notin ol{padding-left:20px}
+#xcharts{position:absolute;left:-9000px;top:0}
+@media (max-width:380px){
+  .groups{grid-template-columns:1fr!important;gap:4px}
+  .grp{display:grid;grid-template-columns:1fr auto;align-items:center;column-gap:8px;padding:6px 8px}
+  .grp .k{grid-column:1}.grp .v{grid-column:1;font-size:15px}.grp .s{grid-column:1}
+  .grp .acts{grid-column:2;grid-row:1/4;flex-direction:column;margin:0}
+  .grp .s br{display:none}.grp .s .nb{display:inline}
+  .setg{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div class="wrap" id="app">
+  <header>
+    <div><h1>Distinta acciaio</h1><div class="sub" id="modelInfo">Collegamento a Trimble Connect…</div></div>
+    <button class="btn sm" id="reloadBtn" disabled title="Rilegge gli oggetti dei modelli caricati">Aggiorna</button>
+  </header>
+  <div class="progress" id="prog"><i></i></div>
+  <div class="status" id="status"></div>
+  <div id="banners"></div>
+
+  <div id="main" class="hidden">
+    <div class="total">
+      <div class="row">
+        <div><div class="k">Peso totale carpenteria</div><div class="v num" id="totKg">–</div></div>
+        <div style="text-align:right"><div class="k" id="totN"></div><div class="num" style="font-weight:600" id="totT"></div></div>
+      </div>
+      <div class="split" id="catBar"></div>
+      <div class="leg" id="catLeg"></div>
+    </div>
+
+    <nav class="tabs" role="tablist" id="tabs">
+      <button role="tab" data-tab="sum" aria-selected="true">Riepilogo</button>
+      <button role="tab" data-tab="bom" aria-selected="false">Distinta</button>
+      <button role="tab" data-tab="work" aria-selected="false">Assemblati/sciolti</button>
+      <button role="tab" data-tab="rep" aria-selected="false">Report</button>
+    </nav>
+
+    <!-- RIEPILOGO -->
+    <section class="pane on" id="p-sum">
+      <div class="tscroll" id="catTable"></div>
+      <div class="cbox"><canvas id="chCat"></canvas></div>
+      <h2>Peso per famiglia di profilo</h2>
+      <div class="cbox" style="height:240px"><canvas id="chFam"></canvas></div>
+      <details class="set">
+        <summary>Criteri di classificazione</summary>
+        <div class="setg">
+          <div><label for="t1">Leggeri fino a (kg/m)</label><input type="number" id="t1" min="0" step="1"></div>
+          <div><label for="t2">Pesanti fino a (kg/m)</label><input type="number" id="t2" min="0" step="1"></div>
+          <div><label for="density">Densità (kg/m³)</label><input type="number" id="density" min="1000" step="10"></div>
+          <div><label for="plateRe">Nomi dei piatti</label><input type="text" id="plateRe" spellcheck="false"></div>
+          <div class="full"><label for="weldRe">Nomi dei profili composti saldati</label><input type="text" id="weldRe" spellcheck="false"></div>
+        </div>
+      </details>
+      <h2>Controllo dati</h2>
+      <div id="qa" class="hint"></div>
+    </section>
+
+    <!-- DISTINTA -->
+    <section class="pane" id="p-bom">
+      <div class="tools">
+        <div class="seg" id="bomSeg"><button data-v="prof" aria-pressed="true">Profili</button><button data-v="plate">Piatti</button><button data-v="fam">Famiglie</button><button data-v="bolt">Bulloneria</button></div>
+        <input type="search" id="bomQ" placeholder="Cerca" aria-label="Cerca nella distinta">
+      </div>
+      <div class="hint" style="margin-bottom:4px">Clic su una riga per selezionare quegli elementi nel modello.</div>
+      <div class="tscroll" id="bomTable"></div>
+    </section>
+
+    <!-- ASSEMBLATI / SCIOLTI -->
+    <section class="pane" id="p-work">
+      <div class="selbox">
+        <div class="what" id="selWhat"><span class="hint">Seleziona nel modello una trave, delle piastre o un intero assieme, poi scegli il gruppo.</span></div>
+        <div class="assign">
+          <button class="btn big asm" id="toA" disabled>Assemblati</button>
+          <button class="btn big sci" id="toS" disabled>Sciolti</button>
+          <button class="btn" id="toU" disabled title="Toglie l'assegnazione">Togli</button>
+        </div>
+        <div class="tools" style="margin:8px 0 0">
+          <span class="hint">Aggiungi alla selezione:</span>
+          <button class="btn sm" id="addTouch" disabled title="Piastre il cui ingombro tocca gli elementi selezionati">piastre a contatto</button>
+          <button class="btn sm" id="addSame" disabled>stesso profilo</button>
+        </div>
+        <div class="msg" id="selMsg"></div>
+      </div>
+
+      <div class="groups" id="groups"></div>
+
+      <div class="tools" style="margin-top:10px">
+        <button class="btn sm" id="colorBtn" aria-pressed="false">Colora i gruppi nel modello</button>
+        <button class="btn sm" id="showAll">Mostra tutto</button>
+      </div>
+
+      <h2>Per profilo</h2>
+      <div class="tscroll" id="workTable"></div>
+
+      <details class="set">
+        <summary>Opzioni e assegnazioni</summary>
+        <div class="setg">
+          <div class="full"><label for="unPolicy">Nel totale, gli elementi non assegnati contano come</label>
+            <select id="unPolicy"><option value="U">Da assegnare (a parte)</option><option value="S">Sciolti</option><option value="A">Assemblati</option></select></div>
+          <div class="full"><label for="touchTol">Tolleranza di contatto per «piastre a contatto» (mm)</label><input type="number" id="touchTol" min="0" step="1"></div>
+          <div class="full tools" style="margin:0">
+            <button class="btn sm" id="expAssign">Esporta assegnazioni</button>
+            <button class="btn sm" id="impAssign">Importa assegnazioni</button>
+            <button class="btn sm" id="clrAssign">Cancella tutte</button>
+            <input type="file" id="impFile" accept=".json" hidden>
+          </div>
+          <div class="full hint" id="assignInfo"></div>
+        </div>
+      </details>
+    </section>
+
+    <!-- REPORT -->
+    <section class="pane" id="p-rep">
+      <h2>Report</h2>
+      <p class="hint" style="margin-top:0">Il PDF contiene riepilogo, grafici, immagini del modello colorato per categoria e per gruppo, divisione assemblati / sciolti e distinte. L’Excel contiene tutte le tabelle, elemento per elemento.</p>
+      <div class="tools">
+        <button class="btn pri" id="pdfBtn">Report PDF</button>
+        <button class="btn" id="xlsBtn">Excel</button>
+        <button class="btn" id="csvBtn">CSV profili</button>
+      </div>
+      <label class="hint" style="display:flex;gap:6px;align-items:center;margin-top:6px"><input type="checkbox" id="repImg" checked> Includi le immagini del modello (usa la vista attuale del visualizzatore)</label>
+      <div class="msg" id="repMsg"></div>
+      <div id="dlFallback" class="hint"></div>
+    </section>
+  </div>
+
+  <div class="notin hidden" id="notin">
+    <h1>Questa pagina va aperta dentro Trimble Connect</h1>
+    <p>È un’estensione del visualizzatore 3D. Per usarla:</p>
+    <ol>
+      <li>In Trimble Connect per browser apri il progetto, poi <strong>Impostazioni → App e funzionalità → Aggiungi personalizzata</strong> (serve essere amministratore del progetto).</li>
+      <li>Incolla l’indirizzo del file <code>manifest.json</code> di questa estensione.</li>
+      <li>Apri un modello nel visualizzatore 3D e scegli <strong>Distinta acciaio</strong> dal pannello delle estensioni.</li>
+    </ol>
+  </div>
+</div>
+
+<div id="xcharts" aria-hidden="true">
+  <canvas id="xCat" width="620" height="330"></canvas><canvas id="xFam" width="620" height="420"></canvas>
+  <canvas id="xTop" width="780" height="520"></canvas><canvas id="xWork" width="620" height="330"></canvas>
+</div>
+
+<script src="js/core.js"></script>
+<script src="js/tcdata.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
