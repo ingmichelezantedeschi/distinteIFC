@@ -197,6 +197,33 @@ const IfcSplit = (() => {
     end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true); end.setUint32(12, cdSize, true); end.setUint32(16, off, true);
     return new Blob([...out, ...central, end.buffer], { type: 'application/zip' });
   }
-  return { normGuid, prepare, subset, zip, bytesToText, textToBytes };
+  /* ---- riconoscimento del contenuto: IFC testo, ifcZIP ---- */
+  function kind(u8) {
+    if (!u8 || u8.length < 4) return 'vuoto';
+    if (u8[0] === 0x50 && u8[1] === 0x4B && u8[2] === 3 && u8[3] === 4) return 'zip';
+    let i = 0; if (u8[0] === 0xEF && u8[1] === 0xBB && u8[2] === 0xBF) i = 3;
+    while (i < u8.length && (u8[i] === 32 || u8[i] === 9 || u8[i] === 10 || u8[i] === 13)) i++;
+    const head = String.fromCharCode.apply(null, u8.subarray(i, i + 12));
+    return head === 'ISO-10303-21' ? 'ifc' : 'altro';
+  }
+  /** Estrae il primo .ifc da un archivio zip (ifcZIP). */
+  async function unzipIfc(u8) {
+    const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+    let eocd = -1; for (let i = u8.length - 22; i >= Math.max(0, u8.length - 70000); i--) if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+    if (eocd < 0) throw new Error('archivio zip non leggibile');
+    let p = dv.getUint32(eocd + 16, true); const n = dv.getUint16(eocd + 10, true), dec = new TextDecoder();
+    for (let k = 0; k < n; k++) {
+      const method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true), nl = dv.getUint16(p + 28, true), el = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true), off = dv.getUint32(p + 42, true);
+      const name = dec.decode(u8.subarray(p + 46, p + 46 + nl)); p += 46 + nl + el + cl;
+      if (!/\.ifc$/i.test(name)) continue;
+      const start = off + 30 + dv.getUint16(off + 26, true) + dv.getUint16(off + 28, true), data = u8.subarray(start, start + csize);
+      if (method === 0) return data;
+      if (method !== 8 || typeof DecompressionStream === 'undefined') throw new Error('compressione zip non supportata dal browser');
+      const out = new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw')));
+      return new Uint8Array(await out.arrayBuffer());
+    }
+    throw new Error('nessun file .ifc nello zip');
+  }
+  return { normGuid, prepare, subset, zip, bytesToText, textToBytes, kind, unzipIfc };
 })();
 if (typeof module !== 'undefined') module.exports = IfcSplit;

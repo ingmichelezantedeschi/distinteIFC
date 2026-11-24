@@ -69,6 +69,7 @@ Serve essere **amministratore del progetto**.
 - Clicca un oggetto nel modello e premi **A** (Assemblati), **S** (Sciolti) o **D** (Scale/altro). **Esc** deseleziona, **Ctrl+Z** annulla.
 - L’indicatore sotto i pulsanti dice se i tasti sono attivi. Se non lo sono, clicca di nuovo un oggetto nel modello. Puoi spegnerli con «Tasti rapidi».
 - **Selezione multipla**: quando è attiva, ogni clic nel modello aggiunge l’oggetto alla selezione e un secondo clic sullo stesso lo toglie. Sostituisce il Ctrl+clic. **Deseleziona** ricomincia da capo.
+- **Selezione a riquadro**: usa la selezione ad area di Trimble Connect (menu della freccia in alto a sinistra). Con «Selezione multipla» attiva, ogni riquadro si aggiunge a quelli precedenti.
 - **Visualizza tutto** fa ricomparire tutti gli oggetti nascosti.
 
 ### Un file IFC per ogni gruppo

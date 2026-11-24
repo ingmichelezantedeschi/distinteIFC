@@ -667,17 +667,28 @@
   }
   async function modelBytes(modelId) {
     const spec = (DATA.models || []).find(m => m.id === modelId) || (DATA.models || []).find(m => m.versionId === modelId) || { id: modelId };
-    let parentId = null, name = spec.name || '';
+    let parentId = null, name = spec.name || '', seen = [];
+    const ok = async u8 => {
+      const k = IfcSplit.kind(u8); seen.push(k);
+      if (k === 'ifc') return u8;
+      if (k === 'zip') { try { const x = await IfcSplit.unzipIfc(u8); if (IfcSplit.kind(x) === 'ifc') return x; } catch (e) { seen.push(e.message); } }
+      return null;
+    };
+    // 1) file già caricato nel visualizzatore (spesso è il formato interno di Trimble, non l'IFC)
     try {
       const f = await API.viewer.getLoadedModel(modelId);
-      if (f) { parentId = (f.file && f.file.parentId) || null; name = f.name || name;
-        if (f.blob instanceof Blob) return { bytes: new Uint8Array(await f.blob.arrayBuffer()), parentId, name }; }
+      if (f) { parentId = (f.file && f.file.parentId) || f.parentId || null; name = f.name || name;
+        if (f.blob instanceof Blob) { const r = await ok(new Uint8Array(await f.blob.arrayBuffer())); if (r) return { bytes: r, parentId, name }; } }
     } catch (e) {}
+    // 2) file originale scaricato dal progetto
     await ProjStore.connect(API, PROJECT);
-    let bytes;
-    try { bytes = await ProjStore.fileBytes(spec.id, spec.versionId); }
-    catch (e) { if (spec.id === modelId) throw e; bytes = await ProjStore.fileBytes(modelId); }
-    return { bytes, parentId, name };
+    const ids = [...new Set([spec.id, modelId].filter(Boolean))];
+    let last = null;
+    for (const id of ids) {
+      try { const r = await ok(await ProjStore.fileBytes(id, id === spec.id ? spec.versionId : undefined)); if (r) return { bytes: r, parentId, name }; }
+      catch (e) { last = e; }
+    }
+    throw new Error(`non riesco ad avere il file IFC originale di «${name || modelId}»` + (last ? ` (${last.message})` : '') + (seen.length ? ` [${seen.join(', ')}]` : ''));
   }
   async function makeGroupIfcs(dest) {
     const groups = GK.filter(g => IFCSEL.has(g) && W.T[g].n);
