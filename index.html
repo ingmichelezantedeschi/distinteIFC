@@ -12,7 +12,7 @@
 <style>
 :root{
   --bg:#FFFFFF; --soft:#F1F1F6; --line:#D7D9E0; --ink:#252A2E; --muted:#6A6E79; --pri:#0063A3; --pri-ink:#FFFFFF;
-  --asm:#D2552D; --asm-soft:#FBE7E0; --sci:#3A87C8; --sci-soft:#E1EEF8; --una:#AEB4BA; --una-soft:#EEF0F2;
+  --asm:#D2552D; --asm-soft:#FBE7E0; --sci:#3A87C8; --sci-soft:#E1EEF8; --oth:#7E57A8; --oth-soft:#EEE7F5; --una:#AEB4BA; --una-soft:#EEF0F2;
   --c-light:#93AECB; --c-heavy:#3D6995; --c-vheavy:#14314E; --c-plate:#B5862A; --c-weld:#86475A; --c-nd:#A3A8A3;
   --warn:#9A5B12; --warn-bg:#FBF0DD; --ok-bg:#E3F1E7; --ok:#24603A;
 }
@@ -33,6 +33,7 @@ header .sub{color:var(--muted);font-size:12px;overflow-wrap:anywhere}
 .btn.sm{padding:3px 8px;font-size:12px}
 .btn.asm{background:var(--asm);border-color:var(--asm);color:#fff}
 .btn.sci{background:var(--sci);border-color:var(--sci);color:#fff}
+.btn.oth{background:var(--oth);border-color:var(--oth);color:#fff}
 .btn.big{padding:9px 10px;font-weight:600;flex:1}
 .btn[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:#fff}
 .progress{height:3px;background:var(--soft);margin-top:10px;display:none}
@@ -79,13 +80,14 @@ tbody tr.sel{background:#E5F0FA}
 .selbox .what{font-size:13px;min-height:2.6em}
 .selbox .what strong{font-size:15px}
 .assign{display:flex;gap:6px;margin-top:8px}
-.groups{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:10px}
+.groups{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:10px}
 .grp{border-radius:6px;padding:7px 8px;min-width:0}
 .grp .k{font-size:12px;font-weight:600}
 .grp .v{font-size:17px;font-weight:700;line-height:1.2}
 .grp .s{font-size:11px;color:var(--muted)}
 .grp.a{background:var(--asm-soft)} .grp.a .k{color:var(--asm)}
 .grp.s{background:var(--sci-soft)} .grp.s .k{color:var(--sci)}
+.grp.o{background:var(--oth-soft)} .grp.o .k{color:var(--oth)}
 .grp.u{background:var(--una-soft)} .grp.u .k{color:#555}
 .grp .s .nb{display:none}
 .grp .acts{display:flex;gap:4px;margin-top:5px;flex-wrap:wrap}
@@ -178,6 +180,7 @@ details.set summary{cursor:pointer;padding:7px 10px;font-weight:600}
         <div class="assign">
           <button class="btn big asm" id="toA" disabled>Assemblati</button>
           <button class="btn big sci" id="toS" disabled>Sciolti</button>
+          <button class="btn big oth" id="toO" disabled>Scale/altro</button>
           <button class="btn" id="toU" disabled title="Toglie l'assegnazione">Togli</button>
         </div>
         <div class="tools" style="margin:8px 0 0;justify-content:space-between">
@@ -208,7 +211,7 @@ details.set summary{cursor:pointer;padding:7px 10px;font-weight:600}
         <summary>Opzioni e assegnazioni</summary>
         <div class="setg">
           <div class="full"><label for="unPolicy">Nel totale, gli elementi non assegnati contano come</label>
-            <select id="unPolicy"><option value="U">Da assegnare (a parte)</option><option value="S">Sciolti</option><option value="A">Assemblati</option></select></div>
+            <select id="unPolicy"><option value="U">Da assegnare (a parte)</option><option value="S">Sciolti</option><option value="A">Assemblati</option><option value="O">Scale/altro</option></select></div>
           <div class="full"><label for="touchTol">Tolleranza di contatto per «piastre a contatto» (mm)</label><input type="number" id="touchTol" min="0" step="1"></div>
           <div class="full"><label>Salvataggio nel progetto Trimble Connect</label>
             <div class="hint" id="projInfo" style="margin:2px 0 6px">Le assegnazioni vengono salvate in questo browser. Salvandole anche nel progetto, nella cartella principale, le trovi su qualsiasi computer e le vedono anche i colleghi.</div>
@@ -227,7 +230,7 @@ details.set summary{cursor:pointer;padding:7px 10px;font-weight:600}
     <!-- REPORT -->
     <section class="pane" id="p-rep">
       <h2>Report</h2>
-      <p class="hint" style="margin-top:0">Il PDF contiene riepilogo, grafici, immagini del modello colorato per categoria e per gruppo, divisione assemblati / sciolti e distinte. L’Excel contiene tutte le tabelle, elemento per elemento.</p>
+      <p class="hint" style="margin-top:0">Il PDF contiene riepilogo, grafici, immagini del modello colorato per categoria e per gruppo, divisione assemblati / sciolti / scale e altro, e distinte. L’Excel contiene tutte le tabelle, elemento per elemento.</p>
       <div class="tools">
         <button class="btn pri" id="pdfBtn">Report PDF</button>
         <button class="btn" id="xlsBtn">Excel</button>

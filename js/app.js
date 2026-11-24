@@ -14,8 +14,10 @@
   const CATCOL = { light: '#93AECB', heavy: '#3D6995', vheavy: '#14314E', weld: '#86475A', plate: '#B5862A', nd: '#A3A8A3' };
   const CATLABEL = Object.fromEntries(IFC.CATS.map(c => [c.k, c.label]));
   const CATORDER = ['light', 'heavy', 'vheavy', 'weld', 'plate', 'nd'];
-  const GCOL = { A: '#D2552D', S: '#3A87C8', U: '#AEB4BA' };
-  const GLABEL = { A: 'Assemblati', S: 'Sciolti', U: 'Da assegnare' };
+  const GCOL = { A: '#D2552D', S: '#3A87C8', O: '#7E57A8', U: '#AEB4BA' };
+  const GLABEL = { A: 'Assemblati', S: 'Sciolti', O: 'Scale/altro', U: 'Da assegnare' };
+  const GK = ['A', 'S', 'O', 'U'], GSHORT = { A: 'Assem.', S: 'Sciolti', O: 'Scale/altro', U: 'Da ass.' };
+  const totW = T => GK.reduce((s, g) => s + T[g].w, 0);
 
   let API = null, PROJECT = { id: 'locale', name: '' }, DATA = null, R = null, INDEX = new Map(), W = null;
   let SEL = [], selSeq = 0, colorOn = store.get('tcsteel-color', true), bomView = 'prof', bomQ = '', tab = 'sum';
@@ -106,7 +108,7 @@
   }
   function computeWork() {
     const z = () => ({ prof: 0, pl: 0, nProf: 0, nPl: 0, w: 0, n: 0, rows: [] });
-    const T = { A: z(), S: z(), U: z() }, byP = new Map();
+    const T = { A: z(), S: z(), O: z(), U: z() }, byP = new Map();
     let manual = 0;
     for (const r of R.rows) {
       const g = effOf(r), t = T[g], w = r.w || 0;
@@ -114,7 +116,7 @@
       t.rows.push(r); t.n++; t.w += w;
       if (r.kind === 'plate') { t.pl += w; t.nPl++; } else { t.prof += w; t.nProf++; }
       const lbl = r.group ? r.group.label : (r.profile || 'n.d.');
-      let p = byP.get(lbl); if (!p) byP.set(lbl, p = { label: lbl, kind: r.kind, A: 0, S: 0, U: 0, nA: 0, nS: 0, nU: 0, n: 0, w: 0, group: r.group });
+      let p = byP.get(lbl); if (!p) byP.set(lbl, p = { label: lbl, kind: r.kind, A: 0, S: 0, O: 0, U: 0, nA: 0, nS: 0, nO: 0, nU: 0, n: 0, w: 0, group: r.group });
       p[g] += w; p['n' + g]++; p.n++; p.w += w;
     }
     W = { T, byProfile: [...byP.values()].sort((a, b) => b.w - a.w), manual };
@@ -200,22 +202,21 @@
   $('#bomQ').addEventListener('input', e => { bomQ = e.target.value; renderBom(); });
 
   function renderWork() {
-    const T = W.T, tot = T.A.w + T.S.w + T.U.w || 1;
+    const T = W.T, tot = totW(T) || 1;
     const card = (g, cls) => `<div class="grp ${cls}"><div class="k">${GLABEL[g]}</div><div class="v num">${f0(T[g].w)} kg</div>
       <div class="s num">${f1(T[g].w / tot * 100)} % · ${f0(T[g].n)} el.<br><span class="nb">· </span>profili ${f0(T[g].prof)} kg<br><span class="nb">· </span>piastre ${f0(T[g].pl)} kg</div>
       <div class="acts"><button class="btn" data-gsel="${g}" ${T[g].n ? '' : 'disabled'}>Seleziona</button><button class="btn" data-gonly="${g}" ${T[g].n ? '' : 'disabled'}>Solo questi</button></div></div>`;
     const showU = S.unPolicy === 'U' || T.U.n;
-    $('#groups').style.gridTemplateColumns = showU ? '' : '1fr 1fr';
-    $('#groups').innerHTML = card('A', 'a') + card('S', 's') + (showU ? card('U', 'u') : '');
+    const shown = GK.filter(g => g !== 'U' || showU);
+    $('#groups').style.gridTemplateColumns = `repeat(${shown.length}, 1fr)`;
+    $('#groups').innerHTML = shown.map(g => card(g, g.toLowerCase())).join('');
     $('#groups').querySelectorAll('[data-gsel]').forEach(b => b.addEventListener('click', () => selectInModel(T[b.dataset.gsel].rows, false)));
     $('#groups').querySelectorAll('[data-gonly]').forEach(b => b.addEventListener('click', () => showOnly(T[b.dataset.gonly].rows)));
     const rows = W.byProfile;
     $('#workTable').innerHTML = table([
       { h: 'Profilo', f: p => `<strong>${esc(p.label)}</strong>` },
-      { h: `<span class="sw" style="background:${GCOL.A}"></span>Assem.`, r: 1, f: p => p.A ? f0(p.A) : '–' },
-      { h: `<span class="sw" style="background:${GCOL.S}"></span>Sciolti`, r: 1, f: p => p.S ? f0(p.S) : '–' },
-      ...(showU ? [{ h: `<span class="sw" style="background:${GCOL.U}"></span>Da ass.`, r: 1, f: p => p.U ? f0(p.U) : '–' }] : [])
-    ], rows, ['Totale', f0(T.A.w), f0(T.S.w), ...(showU ? [f0(T.U.w)] : [])], (p, i) => `class="click" data-p="${i}"`);
+      ...shown.map(g => ({ h: `<span class="sw" style="background:${GCOL[g]}"></span>${GSHORT[g]}`, r: 1, f: p => p[g] ? f0(p[g]) : '–' }))
+    ], rows, ['Totale', ...shown.map(g => f0(T[g].w))], (p, i) => `class="click" data-p="${i}"`);
     $('#workTable').insertAdjacentHTML('afterbegin', '<div class="hint" style="margin-bottom:4px">Pesi in kg. Clic su una riga per selezionare il profilo nel modello.</div>');
     $('#workTable').querySelectorAll('tr[data-p]').forEach(tr => tr.addEventListener('click', () => { const p = rows[+tr.dataset.p]; if (p.group) selectInModel(p.group.rows, true); }));
     $('#colorBtn').setAttribute('aria-pressed', colorOn);
@@ -232,12 +233,12 @@
   }
   function renderSel() {
     const n = SEL.length, w = sum(SEL, r => r.w);
-    ['#toA', '#toS', '#toU', '#addTouch', '#addSame'].forEach(id => $(id).disabled = !n);
+    ['#toA', '#toS', '#toO', '#toU', '#addTouch', '#addSame'].forEach(id => $(id).disabled = !n);
     if (!n) { $('#selWhat').innerHTML = '<span class="hint">Seleziona nel modello una trave, delle piastre o un intero assieme, poi scegli il gruppo.</span>'; return; }
-    const c = { A: 0, S: 0, U: 0 }; SEL.forEach(r => c[grpOf(r)]++);
+    const c = { A: 0, S: 0, O: 0, U: 0 }; SEL.forEach(r => c[grpOf(r)]++);
     const pl = SEL.filter(r => r.kind === 'plate').length;
     const what = n === 1 ? `${esc(SEL[0].profile || SEL[0].name || 'Elemento')}${SEL[0].tag ? ' · ' + esc(SEL[0].tag) : ''}` : `${f0(n)} elementi`;
-    $('#selWhat').innerHTML = `<strong>${what}</strong>, ${f0(w)} kg<br><span class="hint">${n > 1 ? `${f0(n - pl)} profili, ${f0(pl)} piastre · ` : ''}${['A', 'S', 'U'].filter(g => c[g]).map(g => `${GLABEL[g].toLowerCase()} ${f0(c[g])}`).join(', ')}</span>`;
+    $('#selWhat').innerHTML = `<strong>${what}</strong>, ${f0(w)} kg<br><span class="hint">${n > 1 ? `${f0(n - pl)} profili, ${f0(pl)} piastre · ` : ''}${GK.filter(g => c[g]).map(g => `${GLABEL[g].toLowerCase()} ${f0(c[g])}`).join(', ')}</span>`;
   }
   async function assign(g) {
     if (!SEL.length) return;
@@ -347,6 +348,7 @@
   $('#projBtn').addEventListener('click', () => SAVE.projOn ? projSave() : projConnect(true));
   $('#toA').addEventListener('click', () => assign('A'));
   $('#toS').addEventListener('click', () => assign('S'));
+  $('#toO').addEventListener('click', () => assign('O'));
   $('#toU').addEventListener('click', () => assign('U'));
   $('#addSame').addEventListener('click', async () => {
     const add = []; for (const r of SEL) if (r.group) add.push(...r.group.rows);
@@ -383,7 +385,7 @@
     try { await API.viewer.setObjectState(undefined, { color: 'reset' }); if (colorOn) await paintBy(r => GCOL[effOf(r)]); } catch (e) { console.warn(e); }
   }
   async function colorGroups(rows) {
-    const by = { A: [], S: [], U: [] }; rows.forEach(r => by[effOf(r)].push(r));
+    const by = { A: [], S: [], O: [], U: [] }; rows.forEach(r => by[effOf(r)].push(r));
     for (const g in by) if (by[g].length) try { await API.viewer.setObjectState(TCData.selector(by[g]), { color: GCOL[g] }); } catch (e) {}
   }
   $('#colorBtn').addEventListener('click', () => { colorOn = !colorOn; store.set('tcsteel-color', colorOn); $('#colorBtn').setAttribute('aria-pressed', colorOn); colorAll(); });
@@ -397,7 +399,7 @@
   $('#impFile').addEventListener('change', async e => {
     const f = e.target.files[0]; e.target.value = ''; if (!f) return;
     try { const j = JSON.parse(await f.text()); const a = j.assignments || j.assign || j; let n = 0;
-      for (const k in a) if (a[k] === 'A' || a[k] === 'S') { ASSIGN[k] = a[k]; n++; }
+      for (const k in a) if (a[k] === 'A' || a[k] === 'S' || a[k] === 'O') { ASSIGN[k] = a[k]; n++; }
       changed(); UNDO = []; renderUndo(); computeWork(); renderWork(); renderSel(); if (colorOn) colorAll();
       $('#assignInfo').textContent = `Importate ${f0(n)} assegnazioni.`;
     } catch (err) { $('#assignInfo').textContent = 'File non valido: ' + err.message; }
@@ -456,7 +458,7 @@
     const top = R.groups.filter(g => g.kind !== 'plate').sort((a, b) => b.w - a.w).slice(0, 15);
     mk('xTop', { type: 'bar', data: { labels: top.map(g => g.label + (g.kgm ? `  (${F1.format(g.kgm)} kg/m)` : '')), datasets: [{ data: top.map(g => g.w), backgroundColor: top.map(g => CATCOL[g.cat]) }] },
       options: { ...base, indexAxis: 'y', scales: { x: { ticks: { callback: kg } }, y: { grid: { display: false }, ticks: { color: '#252A2E', font: { size: 11 } } } } } });
-    const gs = ['A', 'S', 'U'].filter(g => W.T[g].n);
+    const gs = GK.filter(g => W.T[g].n);
     mk('xWork', { type: 'bar', data: { labels: gs.map(g => GLABEL[g]), datasets: [{ label: 'Profili', data: gs.map(g => W.T[g].prof), backgroundColor: gs.map(g => GCOL[g]), stack: 's' }, { label: 'Piastre', data: gs.map(g => W.T[g].pl), backgroundColor: gs.map(g => GCOL[g] + '99'), stack: 's' }] },
       options: { ...base, indexAxis: 'y', plugins: { ...base.plugins, legend: { display: true, labels: { color: '#252A2E', boxWidth: 10 } } }, scales: { x: { stacked: true, ticks: { callback: kg } }, y: { stacked: true, grid: { display: false }, ticks: { color: '#252A2E' } } } } });
   }
@@ -474,8 +476,8 @@
     const cat = CATORDER.filter(k => R.cats[k].n).map(k => ({ Categoria: CATLABEL[k], Profili: R.cats[k].profiles, Elementi: R.cats[k].n, 'Lunghezza (m)': r2(R.cats[k].L), 'Peso (kg)': r1(R.cats[k].w), '% sul totale': r1(R.cats[k].w / R.total * 100) }));
     cat.push({ Categoria: 'TOTALE CARPENTERIA', Elementi: R.rows.length, 'Peso (kg)': r1(R.total), '% sul totale': 100 });
     if (R.boltsN) cat.push({ Categoria: 'Bulloneria (esclusa)', Elementi: R.boltsN, 'Peso (kg)': R.boltsW ? r1(R.boltsW) : null });
-    const T = W.T, lav = ['A', 'S', 'U'].filter(g => T[g].n).map(g => ({ Gruppo: GLABEL[g], 'Profili (kg)': r1(T[g].prof), 'Pezzi profili': T[g].nProf, 'Piastre (kg)': r1(T[g].pl), 'Pezzi piastre': T[g].nPl, 'Totale (kg)': r1(T[g].w), '%': r1(T[g].w / (T.A.w + T.S.w + T.U.w || 1) * 100) }));
-    lav.push({}); W.byProfile.forEach(p => lav.push({ Gruppo: p.label, 'Assemblati (kg)': r1(p.A), 'Sciolti (kg)': r1(p.S), 'Da assegnare (kg)': r1(p.U) }));
+    const T = W.T, lav = GK.filter(g => T[g].n).map(g => ({ Gruppo: GLABEL[g], 'Profili (kg)': r1(T[g].prof), 'Pezzi profili': T[g].nProf, 'Piastre (kg)': r1(T[g].pl), 'Pezzi piastre': T[g].nPl, 'Totale (kg)': r1(T[g].w), '%': r1(T[g].w / (totW(T) || 1) * 100) }));
+    lav.push({}); W.byProfile.forEach(p => lav.push({ Gruppo: p.label, 'Assemblati (kg)': r1(p.A), 'Sciolti (kg)': r1(p.S), 'Scale/altro (kg)': r1(p.O), 'Da assegnare (kg)': r1(p.U) }));
     const prof = R.groups.filter(g => g.kind !== 'plate').sort((a, b) => a.family.localeCompare(b.family) || a.label.localeCompare(b.label, 'it', { numeric: true }))
       .map(g => ({ Profilo: g.label, Famiglia: g.family, Categoria: CATLABEL[g.cat], Materiale: g.material, 'N.': g.n, 'kg/m': r2(g.kgm), 'Origine kg/m': g.kgmSrc, 'Lunghezza (m)': r2(g.L), 'Peso (kg)': r1(g.w) }));
     const pl = R.groups.filter(g => g.kind === 'plate').sort((a, b) => (a.th ?? 1e9) - (b.th ?? 1e9)).map(g => ({ Spessore: g.label, 'Spessore (mm)': g.th, Materiale: g.material, 'N.': g.n, 'Peso (kg)': r1(g.w) }));
@@ -541,9 +543,9 @@
     tbl({ startY: M + 52, tableWidth: 150, head: [['Categoria', 'Elementi', 'Lungh. (m)', 'Peso (kg)', '%']],
       body: CATORDER.filter(k => R.cats[k].n).map(k => [CATLABEL[k], f0(R.cats[k].n), k === 'plate' ? '–' : f1(R.cats[k].L), f0(R.cats[k].w), f1(R.cats[k].w / R.total * 100)]),
       foot: [['Totale', f0(R.rows.length), '', f0(R.total), '100,0']], columnStyles: right([1, 2, 3, 4]) });
-    const Tt = W.T, tot = Tt.A.w + Tt.S.w + Tt.U.w || 1;
+    const Tt = W.T, tot = totW(Tt) || 1;
     tbl({ startY: doc.lastAutoTable.finalY + 6, tableWidth: 150, head: [['Gruppo', 'Profili (kg)', 'Piastre (kg)', 'Totale (kg)', '%']],
-      body: ['A', 'S', 'U'].filter(g => Tt[g].n).map(g => [GLABEL[g], f0(Tt[g].prof), f0(Tt[g].pl), f0(Tt[g].w), f1(Tt[g].w / tot * 100)]), columnStyles: right([1, 2, 3, 4]) });
+      body: GK.filter(g => Tt[g].n).map(g => [GLABEL[g], f0(Tt[g].prof), f0(Tt[g].pl), f0(Tt[g].w), f1(Tt[g].w / tot * 100)]), columnStyles: right([1, 2, 3, 4]) });
     doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...INK);
     doc.text('Peso per categoria', 172, M + 24); add('xCat', 170, M + 28, 115, 61);
     doc.text('Peso per famiglia di profilo', 172, M + 100); add('xFam', 170, M + 104, 115, 78);
@@ -570,7 +572,7 @@
         box(s1, M, M + 18, 132, 140, 'Colori per categoria di peso');
         box(s2, M + 141, M + 18, 132, 140, 'Colori per gruppo: assemblati / sciolti');
         let lx = M; const ly = H - M - 4; doc.setFontSize(8);
-        for (const [c, l] of [...CATORDER.filter(k => R.cats[k].n).map(k => [CATCOL[k], CATLABEL[k]]), ...['A', 'S', 'U'].filter(g => Tt[g].n).map(g => [GCOL[g], GLABEL[g]])]) {
+        for (const [c, l] of [...CATORDER.filter(k => R.cats[k].n).map(k => [CATCOL[k], CATLABEL[k]]), ...GK.filter(g => Tt[g].n).map(g => [GCOL[g], GLABEL[g]])]) {
           doc.setFillColor(c); doc.rect(lx, ly - 2.6, 3.4, 3.4, 'F'); doc.setTextColor(...INK); doc.text(T(l), lx + 5, ly); lx += doc.getTextWidth(T(l)) + 11; }
       }
     }
@@ -578,9 +580,10 @@
     // 4. assemblati / sciolti per profilo
     doc.addPage(); head('Assemblati e sciolti per profilo', `${f0(W.manual)} elementi assegnati${Tt.U.n && S.unPolicy === 'U' ? `, ${f0(Tt.U.n)} da assegnare` : ''}`);
     const showU = S.unPolicy === 'U' || Tt.U.n;
-    tbl({ startY: M + 18, head: [['Profilo', 'Assemblati (kg)', 'Sciolti (kg)', ...(showU ? ['Da assegnare (kg)'] : []), 'Totale (kg)']],
-      body: W.byProfile.map(p => [p.label, p.A ? f0(p.A) : '–', p.S ? f0(p.S) : '–', ...(showU ? [p.U ? f0(p.U) : '–'] : []), f0(p.w)]),
-      foot: [['Totale', f0(Tt.A.w), f0(Tt.S.w), ...(showU ? [f0(Tt.U.w)] : []), f0(tot)]], columnStyles: right(showU ? [1, 2, 3, 4] : [1, 2, 3]) });
+    const gsP = GK.filter(g => (g !== 'U' || showU) && (g !== 'O' || Tt.O.n));
+    tbl({ startY: M + 18, head: [['Profilo', ...gsP.map(g => GLABEL[g] + ' (kg)'), 'Totale (kg)']],
+      body: W.byProfile.map(p => [p.label, ...gsP.map(g => p[g] ? f0(p[g]) : '–'), f0(p.w)]),
+      foot: [['Totale', ...gsP.map(g => f0(Tt[g].w)), f0(tot)]], columnStyles: right(gsP.map((g, i) => i + 1).concat([gsP.length + 1])) });
 
     // 5. distinta per profilo
     doc.addPage(); head('Distinta per profilo', sub);

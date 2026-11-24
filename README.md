@@ -7,7 +7,7 @@ Estensione per il **visualizzatore 3D di Trimble Connect**. Legge gli elementi d
   - un PDF con grafici e immagini del modello colorato per categoria e per gruppo;
   - un Excel con tutte le tabelle.
 - **Assemblati / sciolti**:
-  - selezioni nel modello una trave, delle piastre o un intero assieme e li assegni al gruppo **Assemblati** o **Sciolti**;
+  - selezioni nel modello una trave, delle piastre o un intero assieme e li assegni al gruppo **Assemblati**, **Sciolti** o **Scale/altro**;
   - il modello si colora per gruppo e i pesi si aggiornano subito.
 
 Il programma non modifica il modello.
@@ -47,7 +47,7 @@ Serve essere **amministratore del progetto**.
 - **Aggiorna** rilegge gli oggetti dei modelli caricati. Usalo quando carichi o togli un modello.
 - **Distinta**: un clic su una riga seleziona e inquadra quegli elementi nel modello.
 - **Assemblati/sciolti**:
-  - selezioni nel modello e premi **Assemblati**, **Sciolti** o **Togli**. Se selezioni un assieme, vengono assegnate tutte le sue parti;
+  - selezioni nel modello e premi **Assemblati**, **Sciolti**, **Scale/altro** o **Togli**. Se selezioni un assieme, vengono assegnate tutte le sue parti;
   - **piastre a contatto** aggiunge alla selezione le piastre il cui ingombro tocca gli elementi selezionati. È approssimato: controlla prima di assegnare;
   - **stesso profilo** aggiunge tutti gli elementi con lo stesso profilo;
   - **Seleziona** / **Solo questi** su ogni gruppo lo selezionano o lo isolano nel modello. **Mostra tutto** ripristina la vista;
