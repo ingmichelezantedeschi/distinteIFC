@@ -64,6 +64,22 @@ Serve essere **amministratore del progetto**.
 - Le assegnazioni sono legate all’identificativo IFC (GUID), quindi restano valide anche con una nuova versione del modello.
 - **Esporta / Importa assegnazioni** resta disponibile come copia di sicurezza.
 
+### Tasti rapidi e selezione multipla
+
+- Clicca un oggetto nel modello e premi **A** (Assemblati), **S** (Sciolti) o **D** (Scale/altro). **Esc** deseleziona, **Ctrl+Z** annulla.
+- L’indicatore sotto i pulsanti dice se i tasti sono attivi. Se non lo sono, clicca di nuovo un oggetto nel modello. Puoi spegnerli con «Tasti rapidi».
+- **Selezione multipla**: quando è attiva, ogni clic nel modello aggiunge l’oggetto alla selezione e un secondo clic sullo stesso lo toglie. Sostituisce il Ctrl+clic. **Deseleziona** ricomincia da capo.
+- **Visualizza tutto** fa ricomparire tutti gli oggetti nascosti.
+
+### Un file IFC per ogni gruppo
+
+Nella scheda **Report** scegli i gruppi e premi:
+
+- **Crea e salva nel progetto**: i file (per esempio `Modello - Assemblati.ifc`) vengono salvati nella cartella del modello, oppure nella cartella principale se la cartella non è disponibile;
+- **Crea e scarica (zip)**: li scarichi sul computer.
+
+Ogni file contiene solo gli elementi del gruppo, con geometria, proprietà, materiali, assiemi e struttura del progetto originali. La bulloneria è esclusa, a meno che non spunti «Includi la bulloneria in ogni file». Con più modelli caricati, viene creato un file per ogni modello e gruppo.
+
 ### Da dove arrivano i dati
 
 L’estensione legge le proprietà IFC degli oggetti tramite la Workspace API di Trimble Connect:
@@ -78,4 +94,4 @@ Quando un elemento non ha né peso né volume, il peso è stimato da sezione × 
 
 ---
 
-File principali: `index.html` (interfaccia), `js/tcdata.js` (lettura da Trimble Connect), `js/core.js` (calcoli e catalogo), `js/app.js` (interfaccia, colori, report), `manifest.json`, `demo/` (simulatore).
+File principali: `index.html` (interfaccia), `js/tcdata.js` (lettura da Trimble Connect), `js/core.js` (calcoli e catalogo), `js/app.js` (interfaccia, colori, report), `js/ifcsplit.js` (IFC per gruppo), `js/projstore.js` (salvataggio nel progetto), `manifest.json`, `demo/` (simulatore).

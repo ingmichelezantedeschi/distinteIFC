@@ -51,7 +51,9 @@ iframe{flex:1;border:0;width:100%}
     if (c.length) ps.push({ name: 'Tekla Common', properties: c });
     return ps;
   }
+  let SRC = '';
   async function loadIfc(text, name) {
+    SRC = text;
     document.getElementById('hud').textContent = 'Lettura di ' + name + '…';
     const M = new IFC.Model(text); await M.index(); const d = await IFC.extract(M);
     MODEL = { id: 'demo-' + name, versionId: 'demo-' + name, name };
@@ -93,6 +95,7 @@ iframe{flex:1;border:0;width:100%}
       convertToObjectIds: async (modelId, ids) => ids.map(id => { const o = BY.get(id); if (!o) throw new Error('not found'); return o.guid; }),
       convertToObjectRuntimeIds: async (modelId, g) => g.map(x => (OBJ.find(o => o.guid === x) || {}).id),
       getHierarchyChildren: async () => [],
+      getLoadedModel: async () => ({ id: MODEL.id, name: MODEL.name, blob: new Blob([SRC]), file: { parentId: 'root1' } }),
       getSelection: async () => selection.size ? [{ modelId: MODEL.id, objectRuntimeIds: [...selection] }] : [],
       setSelection: async (sel, mode) => { const ids = idsOf(sel); if (mode === 'set') selection.clear(); for (const id of ids) mode === 'remove' ? selection.delete(id) : selection.add(id); draw(); sendSel(); },
       setObjectState: async (sel, st) => { const ids = idsOf(sel);

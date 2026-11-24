@@ -60,7 +60,7 @@
     projConnect(false);
   }
   function onEvent(event, args) {
-    if (event === 'viewer.onSelectionChanged') onSelection(args && args.data);
+    if (event === 'viewer.onSelectionChanged') onSelection(args && args.data, !!(args && args.origin && args.origin.isSelf));
     else if (event === 'extension.accessToken') ProjStore.setToken(args && args.data);
     else if (event === 'viewer.onModelStateChanged') banner('stale', 'warn', 'I modelli caricati sono cambiati. <button class="btn sm" id="bnReload">Aggiorna la distinta</button>'), setTimeout(() => { const b = $('#bnReload'); if (b) b.onclick = loadData; });
     else if (event === 'viewer.onModelReset') { if (colorOn) setTimeout(colorAll, 500); }
@@ -130,7 +130,7 @@
       <tbody>${rows.map((r, i) => `<tr ${rowAttr ? rowAttr(r, i) : ''}>${cols.map(c => `<td class="${c.r ? 'r num' : ''}">${c.f(r)}</td>`).join('')}</tr>`).join('')}</tbody>
       ${foot ? `<tfoot><tr>${cols.map((c, i) => `<td class="${c.r ? 'r num' : ''}">${foot[i] ?? ''}</td>`).join('')}</tr></tfoot>` : ''}</table>`;
   }
-  function renderAll() { renderHead(); renderSum(); renderBom(); renderWork(); renderSel(); renderUndo(); renderSave(); }
+  function renderAll() { renderHead(); renderSum(); renderBom(); renderWork(); renderSel(); renderUndo(); renderSave(); renderKeys(); renderIfcGroups(); }
 
   function renderHead() {
     $('#totKg').innerHTML = `${f0(R.total)}<small>kg</small>`;
@@ -202,6 +202,7 @@
   $('#bomQ').addEventListener('input', e => { bomQ = e.target.value; renderBom(); });
 
   function renderWork() {
+    try { renderIfcGroups(); } catch (e) {}
     const T = W.T, tot = totW(T) || 1;
     const card = (g, cls) => `<div class="grp ${cls}"><div class="k">${GLABEL[g]}</div><div class="v num">${f0(T[g].w)} kg</div>
       <div class="s num">${f1(T[g].w / tot * 100)} % · ${f0(T[g].n)} el.<br><span class="nb">· </span>profili ${f0(T[g].prof)} kg<br><span class="nb">· </span>piastre ${f0(T[g].pl)} kg</div>
@@ -224,13 +225,66 @@
   }
 
   /* ------------------------------------------------------------ selezione */
-  async function onSelection(sel) {
+  /* selezione multipla: ogni clic nel modello aggiunge (o toglie) l'oggetto */
+  let MULTI = false, ownSelUntil = 0;
+  const ACC = new Map();
+  async function setSel(rows, mode = 'set') {
+    ownSelUntil = Date.now() + 900;
+    try { await API.viewer.setSelection(TCData.selector(rows), mode); } catch (e) { console.warn(e); }
+  }
+  async function onSelection(sel, self) {
     const seq = ++selSeq;
     if (!INDEX.size) return;
+    const own = self || Date.now() < ownSelUntil;
     const recs = await TCData.expandSelection(API, sel || [], INDEX);
     if (seq !== selSeq) return;
-    SEL = recs; renderSel();
+    if (MULTI && !own) {
+      if (recs.length) {
+        if (recs.length === 1 && ACC.has(recs[0].id)) ACC.delete(recs[0].id); else recs.forEach(r => ACC.set(r.id, r));
+      }
+      SEL = [...ACC.values()];
+      if (SEL.length) setSel(SEL); else if (recs.length) setSel(recs, 'remove');
+    } else if (!MULTI) SEL = recs;
+    else if (!ACC.size && recs.length) { recs.forEach(r => ACC.set(r.id, r)); SEL = recs; }
+    renderSel();
+    if (!own) grabKeys();
   }
+  $('#multiBtn').addEventListener('click', () => {
+    MULTI = !MULTI; $('#multiBtn').setAttribute('aria-pressed', MULTI);
+    ACC.clear(); if (MULTI) SEL.forEach(r => ACC.set(r.id, r));
+    $('#selMsg').textContent = MULTI ? 'Selezione multipla attiva: ogni clic nel modello aggiunge l’oggetto, un secondo clic sullo stesso lo toglie. «Deseleziona» o Esc per ricominciare.' : 'Selezione multipla disattivata.';
+  });
+  async function clearSel() {
+    const rows = SEL.slice(); ACC.clear(); SEL = []; renderSel();
+    if (rows.length) await setSel(rows, 'remove');
+  }
+  $('#clrSel').addEventListener('click', clearSel);
+  $('#showAll2').addEventListener('click', async () => { try { await API.viewer.setObjectState(undefined, { visible: 'reset' }); $('#selMsg').textContent = 'Tutti gli oggetti sono di nuovo visibili.'; } catch (e) {} });
+
+  /* tasti rapidi: dopo un clic nel modello il pannello prende la tastiera */
+  if (S.keysOn === undefined) S.keysOn = true;
+  $('#keysOn').checked = !!S.keysOn;
+  $('#keysOn').addEventListener('change', e => { S.keysOn = e.target.checked; store.set('tcsteel-settings', S); renderKeys(); });
+  function grabKeys() {
+    if (!S.keysOn) return;
+    const a = document.activeElement; if (a && /INPUT|TEXTAREA|SELECT/.test(a.tagName)) return;
+    setTimeout(() => { try { window.focus(); $('#keyTrap').focus({ preventScroll: true }); } catch (e) {} renderKeys(); }, 0);
+  }
+  function renderKeys() {
+    const k = $('#keyState'), on = S.keysOn && document.hasFocus();
+    k.classList.toggle('on', on);
+    k.textContent = !S.keysOn ? '' : on ? 'Tasti attivi: A S D · Ctrl+Z · Esc' : 'Tasti in attesa: clicca un oggetto nel modello';
+    k.classList.toggle('hidden', !S.keysOn);
+  }
+  addEventListener('focus', renderKeys); addEventListener('blur', renderKeys);
+  document.addEventListener('keydown', e => {
+    if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); undo(); return; }
+    if (e.ctrlKey || e.metaKey || e.altKey || !S.keysOn) return;
+    const g = { a: 'A', s: 'S', d: 'O' }[e.key.toLowerCase()];
+    if (g) { e.preventDefault(); if (!SEL.length) { $('#selMsg').textContent = 'Seleziona prima un oggetto nel modello.'; return; } assign(g); }
+    else if (e.key === 'Escape') { e.preventDefault(); clearSel(); }
+  });
   function renderSel() {
     const n = SEL.length, w = sum(SEL, r => r.w);
     ['#toA', '#toS', '#toO', '#toU', '#addTouch', '#addSame'].forEach(id => $(id).disabled = !n);
@@ -250,8 +304,10 @@
     computeWork(); renderWork(); renderSel(); renderUndo();
     $('#selMsg').textContent = g === 'U' ? `Tolta l’assegnazione a ${f0(SEL.length)} elementi.` : `${f0(SEL.length)} ${SEL.length === 1 ? 'elemento assegnato' : 'elementi assegnati'} al gruppo «${GLABEL[g]}».`;
     if (colorOn) await colorGroups(rows);
+    if (hide || MULTI) { ACC.clear(); }
     if (hide) {
       const sel = TCData.selector(rows);
+      ownSelUntil = Date.now() + 900;
       try { await API.viewer.setObjectState(sel, { visible: false }); await API.viewer.setSelection(sel, 'remove'); } catch (e) { console.warn(e); }
       SEL = []; renderSel();
       $('#selMsg').textContent += ' Nascosti nel modello: «Mostra tutto» li fa ricomparire, «Annulla» li riporta com’erano.';
@@ -266,7 +322,9 @@
     try {
       if (u.hide) await API.viewer.setObjectState(sel, { visible: true });
       if (colorOn) await colorGroups(rows); else await API.viewer.setObjectState(sel, { color: 'reset' });
+      ownSelUntil = Date.now() + 900;
       await API.viewer.setSelection(sel, 'set');
+      SEL = rows.slice(); ACC.clear(); if (MULTI) rows.forEach(r => ACC.set(r.id, r)); renderSel();
     } catch (e) { console.warn(e); }
     $('#selMsg').textContent = `Annullata l’assegnazione di ${f0(rows.length)} ${rows.length === 1 ? 'elemento' : 'elementi'}: sono di nuovo selezionati nel modello.`;
   }
@@ -275,9 +333,6 @@
     b.textContent = UNDO.length ? `↶ Annulla (${UNDO.length})` : '↶ Annulla';
   }
   $('#undoBtn').addEventListener('click', undo);
-  document.addEventListener('keydown', e => {
-    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'z' || e.key === 'Z') && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { e.preventDefault(); undo(); }
-  });
   $('#hideAfter').checked = !!S.hideAfter;
   $('#hideAfter').addEventListener('change', e => { S.hideAfter = e.target.checked; store.set('tcsteel-settings', S); });
   $('#hideAssigned').addEventListener('click', async () => {
@@ -602,6 +657,65 @@
     for (let i = 1; i <= np; i++) { doc.setPage(i); doc.setFontSize(8); doc.setTextColor(...MUT); doc.text(T(`${DATA.modelNames.join(', ')}  |  pagina ${i} di ${np}`), Wd - M, H - 6, { align: 'right' }); }
     save(`Report acciaio - ${base()}.pdf`, doc.output('blob'));
   }
+
+  /* ------------------------------------------------------------ IFC per gruppo */
+  const IFCSEL = new Set(store.get('tcsteel-ifcsel', ['A', 'S', 'O']));
+  function renderIfcGroups() {
+    if (!W) return;
+    $('#ifcGroups').innerHTML = GK.filter(g => W.T[g].n).map(g => `<label class="hint" style="display:inline-flex;gap:5px;align-items:center;color:var(--ink)"><input type="checkbox" data-ig="${g}" ${IFCSEL.has(g) ? 'checked' : ''}><span class="sw" style="background:${GCOL[g]}"></span>${GLABEL[g]} <span class="hint">(${f0(W.T[g].n)})</span></label>`).join('');
+    $('#ifcGroups').querySelectorAll('[data-ig]').forEach(c => c.addEventListener('change', () => { c.checked ? IFCSEL.add(c.dataset.ig) : IFCSEL.delete(c.dataset.ig); store.set('tcsteel-ifcsel', [...IFCSEL]); }));
+  }
+  async function modelBytes(modelId) {
+    const spec = (DATA.models || []).find(m => m.id === modelId) || (DATA.models || []).find(m => m.versionId === modelId) || { id: modelId };
+    let parentId = null, name = spec.name || '';
+    try {
+      const f = await API.viewer.getLoadedModel(modelId);
+      if (f) { parentId = (f.file && f.file.parentId) || null; name = f.name || name;
+        if (f.blob instanceof Blob) return { bytes: new Uint8Array(await f.blob.arrayBuffer()), parentId, name }; }
+    } catch (e) {}
+    await ProjStore.connect(API, PROJECT);
+    let bytes;
+    try { bytes = await ProjStore.fileBytes(spec.id, spec.versionId); }
+    catch (e) { if (spec.id === modelId) throw e; bytes = await ProjStore.fileBytes(modelId); }
+    return { bytes, parentId, name };
+  }
+  async function makeGroupIfcs(dest) {
+    const groups = GK.filter(g => IFCSEL.has(g) && W.T[g].n);
+    const msg = t => $('#ifcMsg').innerHTML = t;
+    if (!groups.length) { msg('Scegli almeno un gruppo.'); return; }
+    ['#ifcProj', '#ifcZip'].forEach(b => $(b).disabled = true);
+    const files = [], warn = [];
+    try {
+      for (let mi = 0; mi < DATA.modelIds.length; mi++) {
+        const modelId = DATA.modelIds[mi];
+        msg(`Scarico il modello ${mi + 1} di ${DATA.modelIds.length}…`);
+        const { bytes, parentId, name } = await modelBytes(modelId);
+        const label = (name || DATA.modelNames[mi] || 'modello').replace(/\.ifc$/i, '');
+        msg(`Analisi di ${esc(label)} (${f0(bytes.length / 1048576)} MB)…`);
+        const P = await IfcSplit.prepare(IfcSplit.bytesToText(bytes), v => msg(`Analisi di ${esc(label)}… ${Math.round(v * 100)} %`));
+        for (const g of groups) {
+          const rows = R.rows.filter(r => r.modelId === modelId && effOf(r) === g && r.guid);
+          if (!rows.length) continue;
+          const keep = new Set(rows.map(r => IfcSplit.normGuid(r.guid)));
+          if ($('#ifcBolts').checked) DATA.fasteners.filter(f => f.modelId === modelId && f.guid).forEach(f => keep.add(IfcSplit.normGuid(f.guid)));
+          msg(`Creo ${esc(label)} – ${GLABEL[g]}…`);
+          const res = await IfcSplit.subset(P, keep);
+          if (res.matched < rows.length * 0.9) warn.push(`${label} – ${GLABEL[g]}: trovati nel file ${f0(res.matched)} elementi su ${f0(rows.length)}.`);
+          const fname = `${label} - ${GLABEL[g].replace('/', '-')}.ifc`;
+          if (dest === 'proj') { msg(`Salvo ${esc(fname)} nel progetto…`); await ProjStore.upload(parentId, fname, res.blob); }
+          files.push({ name: fname, blob: res.blob, n: res.matched, size: res.blob.size });
+        }
+      }
+      if (!files.length) { msg('Nessun elemento da esportare nei gruppi scelti.'); return; }
+      if (dest === 'zip') { msg('Preparo lo zip…'); save(`IFC per gruppo - ${base()}.zip`, await IfcSplit.zip(files)); }
+      msg(`<strong>${files.length} file ${dest === 'proj' ? 'salvati nel progetto, nella cartella del modello' : 'creati'}:</strong><br>` + files.map(f => `${esc(f.name)} · ${f0(f.n)} ${f.n === 1 ? 'elemento' : 'elementi'} · ${f1(f.size / 1048576)} MB`).join('<br>') +
+        (warn.length ? `<br><span style="color:var(--warn)">${warn.map(esc).join('<br>')}</span>` : ''));
+    } catch (e) {
+      console.error(e); msg(`<span style="color:var(--warn)">Non riuscito: ${esc(e.message || e)}</span>`);
+    } finally { ['#ifcProj', '#ifcZip'].forEach(b => $(b).disabled = false); }
+  }
+  $('#ifcProj').addEventListener('click', () => makeGroupIfcs('proj'));
+  $('#ifcZip').addEventListener('click', () => makeGroupIfcs('zip'));
 
   window.__tcsteel = { get R() { return R; }, get W() { return W; }, get SEL() { return SEL; }, get ASSIGN() { return ASSIGN; } };
   init();

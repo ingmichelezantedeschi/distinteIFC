@@ -98,6 +98,9 @@ details.set summary{cursor:pointer;padding:7px 10px;font-weight:600}
 .setg label{display:block;font-size:12px;color:var(--muted)}
 .setg input,.setg select{width:100%;border:1px solid var(--line);border-radius:4px;padding:4px 6px}
 .setg .full{grid-column:1/-1}
+.btn kbd{font:600 10px/1 "Open Sans",system-ui,sans-serif;border:1px solid rgba(255,255,255,.6);border-radius:3px;padding:2px 4px;margin-left:4px;opacity:.85}
+.keystate{font-size:11px;padding:2px 7px;border-radius:10px;background:var(--soft);color:var(--muted)}
+.keystate.on{background:var(--ok-bg);color:var(--ok)}
 .saveinfo{font-size:11px;color:var(--muted);margin-top:4px;border-top:1px solid var(--line);padding-top:5px}
 .saveinfo .ok{color:var(--ok)}.saveinfo .err{color:var(--warn)}
 .msg{font-size:12px;margin-top:6px;min-height:1.3em;color:var(--muted)}
@@ -106,6 +109,7 @@ details.set summary{cursor:pointer;padding:7px 10px;font-weight:600}
 .notin h1{font-size:18px}
 .notin ol{padding-left:20px}
 #xcharts{position:absolute;left:-9000px;top:0}
+.keytrap{position:fixed;left:-50px;top:0;width:1px;height:1px;opacity:0;border:0;padding:0}
 @media (max-width:380px){
   .groups{grid-template-columns:1fr!important;gap:4px}
   .grp{display:grid;grid-template-columns:1fr auto;align-items:center;column-gap:8px;padding:6px 8px}
@@ -178,14 +182,21 @@ details.set summary{cursor:pointer;padding:7px 10px;font-weight:600}
       <div class="selbox">
         <div class="what" id="selWhat"><span class="hint">Seleziona nel modello una trave, delle piastre o un intero assieme, poi scegli il gruppo.</span></div>
         <div class="assign">
-          <button class="btn big asm" id="toA" disabled>Assemblati</button>
-          <button class="btn big sci" id="toS" disabled>Sciolti</button>
-          <button class="btn big oth" id="toO" disabled>Scale/altro</button>
+          <button class="btn big asm" id="toA" disabled title="Tasto A">Assemblati <kbd>A</kbd></button>
+          <button class="btn big sci" id="toS" disabled title="Tasto S">Sciolti <kbd>S</kbd></button>
+          <button class="btn big oth" id="toO" disabled title="Tasto D">Scale/altro <kbd>D</kbd></button>
           <button class="btn" id="toU" disabled title="Toglie l'assegnazione">Togli</button>
         </div>
-        <div class="tools" style="margin:8px 0 0;justify-content:space-between">
-          <label class="hint" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="hideAfter"> Nascondi dopo l’assegnazione</label>
+        <div class="tools" style="margin:8px 0 0">
+          <button class="btn sm" id="multiBtn" aria-pressed="false" title="Ogni clic nel modello aggiunge l’oggetto alla selezione; un secondo clic lo toglie">Selezione multipla</button>
+          <button class="btn sm" id="showAll2" title="Fa ricomparire tutti gli oggetti nascosti">Visualizza tutto</button>
           <button class="btn sm" id="undoBtn" disabled title="Annulla l’ultima assegnazione (Ctrl+Z)">↶ Annulla</button>
+          <button class="btn sm" id="clrSel" title="Deseleziona (Esc)">Deseleziona</button>
+        </div>
+        <div class="tools" style="margin:6px 0 0">
+          <label class="hint" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="hideAfter"> Nascondi dopo l’assegnazione</label>
+          <label class="hint" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="keysOn"> Tasti rapidi</label>
+          <span class="keystate" id="keyState"></span>
         </div>
         <div class="tools" style="margin:8px 0 0">
           <span class="hint">Aggiungi alla selezione:</span>
@@ -238,6 +249,16 @@ details.set summary{cursor:pointer;padding:7px 10px;font-weight:600}
       </div>
       <label class="hint" style="display:flex;gap:6px;align-items:center;margin-top:6px"><input type="checkbox" id="repImg" checked> Includi le immagini del modello (usa la vista attuale del visualizzatore)</label>
       <div class="msg" id="repMsg"></div>
+
+      <h2 style="margin-top:20px">Un file IFC per ogni gruppo</h2>
+      <p class="hint" style="margin-top:0">Crea un IFC per ciascun gruppo con i soli elementi di quel gruppo: geometria, proprietà, materiali, assiemi e struttura del progetto restano quelli originali. Se hai caricato più modelli, viene creato un file per modello e per gruppo.</p>
+      <div class="tools" id="ifcGroups"></div>
+      <label class="hint" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="ifcBolts"> Includi la bulloneria in ogni file</label>
+      <div class="tools" style="margin-top:6px">
+        <button class="btn pri" id="ifcProj">Crea e salva nel progetto</button>
+        <button class="btn" id="ifcZip">Crea e scarica (zip)</button>
+      </div>
+      <div class="msg" id="ifcMsg"></div>
       <div id="dlFallback" class="hint"></div>
     </section>
   </div>
@@ -253,6 +274,7 @@ details.set summary{cursor:pointer;padding:7px 10px;font-weight:600}
   </div>
 </div>
 
+<button id="keyTrap" class="keytrap" aria-label="Tasti rapidi: A assemblati, S sciolti, D scale e altro"></button>
 <div id="xcharts" aria-hidden="true">
   <canvas id="xCat" width="620" height="330"></canvas><canvas id="xFam" width="620" height="420"></canvas>
   <canvas id="xTop" width="780" height="520"></canvas><canvas id="xWork" width="620" height="330"></canvas>
@@ -261,6 +283,7 @@ details.set summary{cursor:pointer;padding:7px 10px;font-weight:600}
 <script src="js/core.js"></script>
 <script src="js/tcdata.js"></script>
 <script src="js/projstore.js"></script>
+<script src="js/ifcsplit.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

@@ -55,18 +55,30 @@ const ProjStore = (() => {
     const r = await fetch(url); if (!r.ok) throw new Error('download non riuscito (' + r.status + ')');
     return JSON.parse(await r.text());
   }
-  async function save(obj) {
-    if (fileId === null) await findFile();
-    const blob = new Blob([JSON.stringify(obj)], { type: 'application/json' });
-    const body = { parentId: rootId, parentType: 'FOLDER', name: FILE };
+  async function upload(parentId, name, blob, existingId) {
+    const body = { parentId: parentId || rootId, parentType: 'FOLDER', name };
     let ini;
     try { ini = await req('files/fs/initiate', { method: 'POST', body: JSON.stringify(body) }); }
-    catch (e) { if (!fileId) throw e; ini = await req('files/fs/initiate', { method: 'POST', body: JSON.stringify({ ...body, fileId }) }); }
+    catch (e) { if (!existingId) throw e; ini = await req('files/fs/initiate', { method: 'POST', body: JSON.stringify({ ...body, fileId: existingId }) }); }
     const put = await fetch(ini.uploadURL || ini.uploadUrl, { method: 'PUT', body: blob });
     if (!put.ok) throw new Error('caricamento non riuscito (' + put.status + ')');
-    const res = await req('files/fs/commit', { method: 'POST', body: JSON.stringify({ uploadId: ini.uploadId }) });
+    return req('files/fs/commit', { method: 'POST', body: JSON.stringify({ uploadId: ini.uploadId }) });
+  }
+  async function save(obj) {
+    if (fileId === null) await findFile();
+    const res = await upload(rootId, FILE, new Blob([JSON.stringify(obj)], { type: 'application/json' }), fileId);
     if (res && res.id) fileId = res.id;
     return res;
   }
-  return { setToken, connect, load, save, FILE, get ready() { return !!(token && origin && rootId); } };
+  /** Contenuto di un file del progetto come byte. */
+  async function fileBytes(fileId, versionId) {
+    let d;
+    try { d = await req('files/fs/' + fileId + '/downloadurl' + (versionId ? '?versionId=' + encodeURIComponent(versionId) : '')); }
+    catch (e) { d = await req('files/fs/' + fileId + '/downloadurl'); }
+    const url = d && (d.url || d.downloadUrl || d.downloadURL);
+    if (!url) throw new Error('indirizzo di download mancante');
+    const r = await fetch(url); if (!r.ok) throw new Error('download non riuscito (' + r.status + ')');
+    return new Uint8Array(await r.arrayBuffer());
+  }
+  return { setToken, connect, load, save, upload, fileBytes, FILE, get ready() { return !!(token && origin && rootId); } };
 })();
